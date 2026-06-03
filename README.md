@@ -2,6 +2,8 @@
 
 **Remote web control and automatic startup for Siemens S7-PLCSIM Advanced virtual PLCs.**
 
+![PLCSIM-WebControl web interface](docs/ui.png)
+
 PLCSIM-WebControl is a small always-on web app that **extends** S7-PLCSIM Advanced — it does **not**
 replace it. You still create and configure your virtual PLCs in the Siemens PLCSIM Advanced GUI as
 usual; PLCSIM-WebControl reads that workspace and adds what the GUI doesn't give you:
