@@ -8,12 +8,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 First public release.
 
 ### Added
-- Web UI to list and control the PLCs of a Siemens S7-PLCSIM Advanced workspace
-  (power on, RUN, STOP, power off) from a browser.
-- Configurable **power-on limit** with a separate, disk-only **hard safety cap** that the
-  web UI can never exceed (protects machines that can only run a few instances at once).
+- **Remote web control** of the PLCs in a Siemens S7-PLCSIM Advanced workspace (power on, RUN, STOP,
+  power off) from a browser, on this machine or any other machine on the network.
 - **Instance auto-start** at boot, with two modes: `last` (restore whatever was running before
   the last shutdown) and `fixed` (always start one chosen instance).
+- Configurable **power-on limit** with a separate, disk-only **hard safety cap** that the
+  web UI can never exceed (protects machines that can only run a few instances at once).
 - **Boot protections** against a freeze/restart loop:
   - boot-attempt counter that enters SAFE MODE after N non-stabilizing boots,
   - a "clean boot" check gated on repeated self `/health` probes (detects a soft freeze where

@@ -1,28 +1,50 @@
 # PLC-WebControl
 
-A small always-on web service to control **Siemens S7-PLCSIM Advanced** virtual PLCs from a browser.
+**Remote web control and automatic startup for Siemens S7-PLCSIM Advanced virtual PLCs.**
 
-Start, RUN, STOP and power off your simulated PLCs from a clean web page, have one (or more) power
-on automatically after a server reboot, and rely on built-in safeguards that stop a misconfigured
-machine from getting stuck in a freeze/restart loop.
+PLC-WebControl is a small always-on web app that **extends** S7-PLCSIM Advanced — it does **not**
+replace it. You still create and configure your virtual PLCs in the Siemens PLCSIM Advanced GUI as
+usual; PLC-WebControl reads that workspace and adds the two things the GUI doesn't give you:
 
-> This is an independent, open-source tool. It is **not** affiliated with Siemens. It uses the
-> Siemens PLCSIM Advanced API, which you must install separately under your own Siemens license.
-> The proprietary Siemens DLL is **not** included here; the tool locates the one already on your machine.
+- 🌐 **Remote control from a browser** — power on, RUN, STOP and power off your PLCs from any machine
+  on the network. Drive a simulation host from your own desktop or another VM, with no Siemens GUI and
+  no remote-desktop session required.
+- 🔄 **Automatic startup** — have your PLCs come back up on their own after a server reboot or power
+  cut, completely unattended. The original GUI can't do this.
+
+Everything else (a power-on limit, per-PLC IP, network mode, freeze-loop safeguards) is there to make
+those two features safe and convenient to run unattended.
+
+> Independent, open-source tool — **not** affiliated with Siemens. It uses the Siemens PLCSIM Advanced
+> API, which you install separately under your own Siemens license. The proprietary Siemens DLL is
+> **not** included here; the tool locates the one already on your machine.
 
 ---
 
 ## What it does
 
-- **Browser control** of every PLC in a PLCSIM workspace: power on, RUN, STOP, power off.
-- **Power-on limit** — choose how many PLCs may run at once (default **1**). A separate, disk-only
-  **hard safety cap** guarantees the limit can never be raised past your machine's real capacity.
-- **Auto-start at boot** — restore whatever was running before the last shutdown, or always start one
-  chosen PLC. The *service* always runs at startup; auto-starting an *instance* is a separate toggle.
-- **Freeze-loop protection** — if the machine keeps failing to stabilize after boot, the service enters
-  a clearly-flagged **SAFE MODE** and stops auto-starting, so a bad configuration can't loop forever.
-- **Per-PLC IP override**, re-applied on every power-on, so a PLC is reachable on your subnet.
-- **Networking** via Softbus (zero-config) or TCP/IP mapped to a host network adapter.
+**The two main features**
+
+- **Remote web control.** A clean web page lists every PLC in your PLCSIM workspace and lets you power
+  on, RUN, STOP and power off — from this machine or any other machine that can reach it. Manage a
+  headless simulation host without remoting into it.
+- **Automatic instance startup.** Bring one or more PLCs up by themselves at boot. Mode `last` restores
+  whatever was running before the last shutdown (so a reboot or power cut returns to where it was);
+  mode `fixed` always starts a chosen PLC. The *service* always runs at startup; auto-starting an
+  *instance* is a separate, optional toggle.
+
+**Supporting features**
+
+- **Power-on limit** (default **1**) with a separate, disk-only **hard safety cap**, so you never start
+  more PLCs than the machine can actually handle.
+- **Per-PLC IP override**, re-applied on every power-on, so a PLC stays reachable on your subnet.
+- **Network mode** selection: Softbus (zero-config) or TCP/IP mapped to a host adapter.
+- **Unattended-boot safeguards** that keep automatic startup from getting a machine stuck in a
+  freeze/restart loop (see below).
+
+> Instances themselves are **created and configured in the Siemens PLCSIM Advanced GUI** (and programs
+> are downloaded from TIA Portal). PLC-WebControl is an extension on top of that workflow, not a
+> replacement for it.
 
 ---
 
@@ -81,7 +103,11 @@ appconfig.example.txt       configuration template
 
 ---
 
-## How the safeguards work
+## Safeguards for unattended operation
+
+Powering PLCs on automatically, with no human watching, needs a few guardrails. These run quietly in
+the background — in normal use you never notice them — but they are what makes auto-start safe to rely
+on, so they are documented here.
 
 **Power-on limit + hard cap.** `max_powered_on` (editable in the UI) is the operational limit.
 `hard_max_powered_on` (in `appconfig.txt`, not editable from the UI) is the real capacity of the
