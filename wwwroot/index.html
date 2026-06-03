@@ -259,8 +259,11 @@ async function load(){
 
 $('#refresh').onclick = load;
 $('#ws').onchange = async e => { const r=await api('select-workspace',{name:e.target.value}); toast(r.message,r.ok); await load(); };
-$('#asMode').onchange = e => { $('#asInstance').style.display = (e.target.value==='fixed')?'':'none'; };
-$('#asSave').onclick = async () => { const r=await api('autostart',{enabled:$('#asEnabled').checked, mode:$('#asMode').value, instance:$('#asInstance').value}); toast(r.message,r.ok); await load(); };
+async function saveAutostart(){ const r=await api('autostart',{enabled:$('#asEnabled').checked, mode:$('#asMode').value, instance:$('#asInstance').value}); toast(r.message,r.ok); await load(); }
+$('#asEnabled').onchange = saveAutostart;
+$('#asInstance').onchange = saveAutostart;
+$('#asMode').onchange = () => { $('#asInstance').style.display = ($('#asMode').value==='fixed')?'':'none'; saveAutostart(); };
+$('#asSave').onclick = saveAutostart;
 $('#maxSave').onclick = async () => { const r=await api('limit',{max:Number($('#maxOn').value)||1}); toast(r.message,r.ok); await load(); };
 $('#safeClear').onclick = async () => { const r=await api('clear-safemode',{}); toast(r.message,r.ok); await load(); };
 $('#suppressNext').onchange = async e => { const r=await api('safemode',{enabled:e.target.checked}); toast(r.message,r.ok); await load(); };
