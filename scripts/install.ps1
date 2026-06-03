@@ -36,6 +36,8 @@ function Assert-Admin {
 Assert-Admin
 
 Write-Host "==== PLCSIM-WebControl installer ====" -ForegroundColor Cyan
+if ($AsTask) { Write-Host "Install method: Scheduled Task (-AsTask)." }
+else { Write-Host "Install method: Windows Service - manage it later from services.msc / Task Manager > Services." }
 
 # 1) Build the executable if it is missing.
 if (-not (Test-Path $exe)) {

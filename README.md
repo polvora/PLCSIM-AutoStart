@@ -31,6 +31,9 @@ Beyond remote control and auto-start:
   more PLCs than the machine can actually handle.
 - **Per-PLC IP override**, re-applied on every power-on, so a PLC stays reachable on your subnet.
 - **Network mode**: Softbus (zero-config) or TCP/IP mapped to a host adapter.
+- **Installs as a Windows Service** you Start/Stop from `services.msc` / Task Manager. (Because PLCSIM
+  needs an interactive session, the service is a launcher that runs the app in the logged-in session;
+  `-AsTask` uses a Scheduled Task instead. See [docs/INSTALL.md](docs/INSTALL.md#how-the-service-works-the-session-0-catch).)
 - **Unattended-boot safeguards** that keep auto-start from getting a machine stuck in a freeze/restart
   loop ([details below](#safeguards-for-unattended-operation)).
 
