@@ -112,10 +112,21 @@ if ($Lan) {
     if ($ip) { Write-Host "LAN URL:    http://${ip}:$Port" -ForegroundColor Cyan }
 }
 Write-Host "Logs:       $root\webcontrol.log"
+# 7) Auto-logon for unattended boot (a core feature: PLCSIM only runs while a user is logged in).
 Write-Host ""
-Write-Host "For unattended boot (auto-power a PLC after a server restart), also set up auto-logon:" -ForegroundColor Yellow
-Write-Host "  scripts\setup-autologon.ps1   (optional; see docs\INSTALL.md)"
+Write-Host "Auto-logon - unattended boot:" -ForegroundColor Cyan
+Write-Host "  PLCSIM only runs while a user is signed in. Auto-logon makes Windows sign '$curUser' in"
+Write-Host "  automatically after a reboot, so the service (and your PLCs) come back with nobody present."
+Write-Host "  It stores that account's password (encrypted if Sysinternals Autologon is available)."
+$al = Read-Host "Set up auto-logon for $curUser now? [y/N]"
+if ($al -eq "y") {
+    try { & (Join-Path $PSScriptRoot "setup-autologon.ps1") -User $env:USERNAME -Domain $env:USERDOMAIN -NoPrompt }
+    catch { Write-Warning "Auto-logon setup failed: $($_.Exception.Message). Retry later with scripts\setup-autologon.ps1" }
+} else {
+    Write-Host "  Skipped. You can enable it later by re-running the installer or scripts\setup-autologon.ps1."
+}
 
+Write-Host ""
 $startNow = Read-Host "Start the service now? [Y/n]"
 if ($startNow -ne "n") {
     Start-ScheduledTask -TaskName $TaskName

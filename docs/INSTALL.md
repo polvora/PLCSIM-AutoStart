@@ -34,11 +34,14 @@ desktop, not a hidden background service (the SYSTEM account). Run as SYSTEM and
 The catch: it runs only while someone is logged in. For a server that must recover on its own after a
 reboot, enable auto-logon (below).
 
-## Unattended boot (optional auto-logon)
+## Unattended boot (auto-logon)
+PLCSIM only runs while a user is signed in, so for a server that must recover on its own after a
+reboot, enable auto-logon. **The installer offers this as a step** and asks for the account's password.
+To set it up later or on its own:
 ```powershell
 .\scripts\setup-autologon.ps1
 ```
-Logs the chosen account in automatically at boot, which starts the service. It uses Sysinternals
+It logs the account in automatically at boot, which starts the service. It uses Sysinternals
 **Autologon** (encrypted password) if available, else the registry (plaintext — secured machines only).
 Read the warning at the top of the script first.
 

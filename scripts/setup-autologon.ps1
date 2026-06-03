@@ -18,7 +18,8 @@
 
 param(
     [string]$User   = $env:USERNAME,
-    [string]$Domain = $env:USERDOMAIN
+    [string]$Domain = $env:USERDOMAIN,
+    [switch]$NoPrompt   # skip the y/N confirmation (used when called from install.ps1)
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,9 +29,11 @@ if (-not $id.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 }
 
 Write-Host "Configure auto-logon for: $Domain\$User" -ForegroundColor Cyan
-Write-Warning "Read the security warning at the top of this script before continuing."
-$go = Read-Host "Continue? [y/N]"
-if ($go -ne "y") { Write-Host "Aborted."; return }
+if (-not $NoPrompt) {
+    Write-Warning "Read the security warning at the top of this script before continuing."
+    $go = Read-Host "Continue? [y/N]"
+    if ($go -ne "y") { Write-Host "Aborted."; return }
+}
 
 $sec = Read-Host "Password for $Domain\$User" -AsSecureString
 $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)

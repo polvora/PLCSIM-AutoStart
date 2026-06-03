@@ -43,7 +43,7 @@ Beyond remote control and auto-start:
 - **.NET Framework 4.x** — built into modern Windows; no Visual Studio or .NET SDK required.
 - A **logged-in Windows session** — i.e. a user signed in to the desktop, not a hidden background
   service. PLCSIM needs this for networking, so the service runs as your user at logon. For a server to
-  recover on its own after a reboot, enable auto-logon (helper included; see [docs/INSTALL.md](docs/INSTALL.md)).
+  recover on its own after a reboot, enable auto-logon (the installer offers it; see [docs/INSTALL.md](docs/INSTALL.md)).
 
 ---
 
@@ -54,7 +54,8 @@ Beyond remote control and auto-start:
    it produces a `PLCSIM-WebControl-main` folder.
 2. **Double-click `Install.cmd`** and accept the admin prompt (UAC). It sets everything up: detects
    your PLCSIM Advanced install, makes the UI reachable from the LAN (no authentication; it opens the
-   firewall for the port), creates `appconfig.txt`, and registers an always-on Scheduled Task.
+   firewall for the port), creates `appconfig.txt`, registers an always-on Scheduled Task, and offers
+   to enable **auto-logon** for fully unattended boot.
    *(Command-line alternative: run `scripts\install.ps1` from an elevated PowerShell; add `-LocalOnly`
    to bind to localhost.)*
 3. Open the UI:
