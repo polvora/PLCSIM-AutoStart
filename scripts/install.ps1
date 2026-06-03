@@ -2,25 +2,28 @@
 #
 # RUN THIS IN AN ELEVATED POWERSHELL (Run as administrator).
 #
-# It registers a Scheduled Task that starts the web service whenever the install account logs on,
-# so the service is always available. PLCSIM Advanced only works inside a logged-in Windows session
-# (a signed-in desktop, not the hidden SYSTEM account), so the task runs as your user at logon. For
-# fully unattended boot, also configure auto-logon (see scripts\setup-autologon.ps1).
+# By default it installs a Windows Service you can Start/Stop from services.msc / Task Manager.
+# PLCSIM Advanced cannot run from the hidden SYSTEM/session-0 context, so the service runs as
+# LocalSystem only as a LAUNCHER: it starts the web app inside the logged-in user's interactive
+# session (where PLCSIM works). For unattended boot, also configure auto-logon (offered below).
+# Use -AsTask to install a Scheduled Task instead of a service.
 #
 # Usage:
-#   .\install.ps1                 # interactive; LAN-open by default (remote access is the main feature)
+#   .\install.ps1                 # interactive; Windows Service, LAN-open by default
 #   .\install.ps1 -Port 8091
-#   .\install.ps1 -LocalOnly      # bind to localhost only (this machine's browser only)
+#   .\install.ps1 -LocalOnly      # bind to localhost only
+#   .\install.ps1 -AsTask         # install a Scheduled Task instead of a Windows Service
 
 param(
     [int]$Port = 8090,
     [switch]$LocalOnly,
+    [switch]$AsTask,
     [string]$TaskName = "PLCSIM WebControl"
 )
 
 $ErrorActionPreference = "Stop"
 $root    = Split-Path -Parent $PSScriptRoot
-$exe     = Join-Path $root "PlcWebControl.exe"
+$exe     = Join-Path $root "PlcsimWebControl.exe"
 $cfg     = Join-Path $root "appconfig.txt"
 $example = Join-Path $root "appconfig.example.txt"
 
@@ -36,7 +39,7 @@ Write-Host "==== PLCSIM-WebControl installer ====" -ForegroundColor Cyan
 
 # 1) Build the executable if it is missing.
 if (-not (Test-Path $exe)) {
-    Write-Host "PlcWebControl.exe not found - building it now..."
+    Write-Host "PlcsimWebControl.exe not found - building it now..."
     & (Join-Path $PSScriptRoot "build.ps1")
 }
 
@@ -93,30 +96,56 @@ if ($Lan) {
     }
 }
 
-# 6) Register the always-on Scheduled Task (runs at logon, in the logged-in session, elevated).
+# 6) Install as a Windows Service (default) or a Scheduled Task (-AsTask).
 $curUser = "$env:USERDOMAIN\$env:USERNAME"
-$action  = New-ScheduledTaskAction -Execute $exe -WorkingDirectory $root
-$set     = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-            -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) `
-            -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $curUser
-$prin    = New-ScheduledTaskPrincipal -UserId $curUser -LogonType Interactive -RunLevel Highest
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $set -Principal $prin -Force | Out-Null
 
-Write-Host ""
-Write-Host "Installed scheduled task '$TaskName' (runs as $curUser at logon)." -ForegroundColor Green
-Write-Host "Start now:  Start-ScheduledTask -TaskName '$TaskName'"
+# Always clear any previous install of either kind with this name, to avoid duplicates.
+$svcExisting = Get-Service -Name $TaskName -ErrorAction SilentlyContinue
+if ($svcExisting) {
+    if ($svcExisting.Status -ne 'Stopped') { Stop-Service -Name $TaskName -Force -ErrorAction SilentlyContinue }
+    & sc.exe delete "$TaskName" | Out-Null; Start-Sleep 1
+}
+Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+Get-Process PlcsimWebControl -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+if (-not $AsTask) {
+    # Windows Service (launcher): shows in services.msc / Task Manager; runs as LocalSystem and starts
+    # the web app in the interactive session so PLCSIM works.
+    New-Service -Name $TaskName -BinaryPathName "`"$exe`" --service" -DisplayName $TaskName `
+        -Description "PLCSIM-WebControl: launches the web app in the interactive session." `
+        -StartupType Automatic | Out-Null
+    & sc.exe failure "$TaskName" reset= 0 actions= restart/60000 | Out-Null
+    $installedAs = "service"
+    Write-Host ""
+    Write-Host "Installed Windows Service '$TaskName' (Automatic, LocalSystem)." -ForegroundColor Green
+    Write-Host "Manage in services.msc / Task Manager > Services, or:  Start-Service / Stop-Service '$TaskName'"
+} else {
+    # Scheduled Task (fallback): runs the web app directly at the install user's logon.
+    $action  = New-ScheduledTaskAction -Execute $exe -WorkingDirectory $root
+    $set     = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+                -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) `
+                -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $curUser
+    $prin    = New-ScheduledTaskPrincipal -UserId $curUser -LogonType Interactive -RunLevel Highest
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $set -Principal $prin -Force | Out-Null
+    $installedAs = "task"
+    Write-Host ""
+    Write-Host "Installed scheduled task '$TaskName' (runs as $curUser at logon)." -ForegroundColor Green
+}
+
 Write-Host "Open UI:    http://localhost:$Port"
 if ($Lan) {
     $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | Select-Object -First 1).IPAddress
     if ($ip) { Write-Host "LAN URL:    http://${ip}:$Port" -ForegroundColor Cyan }
 }
-Write-Host "Logs:       $root\webcontrol.log"
+if (-not $AsTask) { Write-Host "Logs:       $root\webcontrol.log   (service log: $root\service.log)" }
+else { Write-Host "Logs:       $root\webcontrol.log" }
+
 # 7) Auto-logon for unattended boot (a core feature: PLCSIM only runs while a user is logged in).
 Write-Host ""
 Write-Host "Auto-logon - unattended boot:" -ForegroundColor Cyan
 Write-Host "  PLCSIM only runs while a user is signed in. Auto-logon makes Windows sign '$curUser' in"
-Write-Host "  automatically after a reboot, so the service (and your PLCs) come back with nobody present."
+Write-Host "  automatically after a reboot, so the app (and your PLCs) come back with nobody present."
 Write-Host "  It stores that account's password (encrypted if Sysinternals Autologon is available)."
 $al = Read-Host "Set up auto-logon for $curUser now? [y/N]"
 if ($al -eq "y") {
@@ -127,10 +156,10 @@ if ($al -eq "y") {
 }
 
 Write-Host ""
-$startNow = Read-Host "Start the service now? [Y/n]"
+$startNow = Read-Host "Start it now? [Y/n]"
 if ($startNow -ne "n") {
-    Start-ScheduledTask -TaskName $TaskName
-    Start-Sleep 3
-    Write-Host "Started. Recent log:"
-    if (Test-Path "$root\webcontrol.log") { Get-Content "$root\webcontrol.log" -Tail 8 }
+    if ($installedAs -eq "service") { Start-Service -Name $TaskName } else { Start-ScheduledTask -TaskName $TaskName }
+    Write-Host "Starting... (the web app takes a few seconds to come up)"
+    Start-Sleep 6
+    if (Test-Path "$root\webcontrol.log") { Write-Host "Recent app log:"; Get-Content "$root\webcontrol.log" -Tail 8 }
 }

@@ -1,5 +1,10 @@
-// PlcWebControl.cs
+// PlcsimWebControl.cs
 // Always-on local web service to control Siemens S7-PLCSIM Advanced virtual PLCs from a browser.
+//
+// Run modes:
+//   PlcsimWebControl.exe              -> runs the web app (must be an interactive session).
+//   PlcsimWebControl.exe --service    -> runs as a Windows Service (LocalSystem) that LAUNCHES the
+//                                        web app in the active interactive session (PLCSIM needs one).
 //
 // Features:
 //   * Web UI listing the PLCs of a PLCSIM workspace (Documents\PLCSIM\<workspace>).
@@ -27,6 +32,8 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.ServiceProcess;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -43,8 +50,18 @@ internal static class Program
     private static int Main(string[] args)
     {
         string exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-        _apiDllPath = ApiDllLocator.Find(exeDir);
 
+        // Service mode: run as a Windows Service that launches the web app in the interactive session.
+        // (PLCSIM Advanced cannot do networking from the session-0 service context, so the service is
+        //  only a launcher; the actual web app runs in the logged-in user's session.)
+        if (args != null && args.Length > 0 && string.Equals(args[0], "--service", StringComparison.OrdinalIgnoreCase))
+        {
+            ServiceBase.Run(new PlcService(exeDir));
+            return 0;
+        }
+
+        // Normal mode: run the web app itself.
+        _apiDllPath = ApiDllLocator.Find(exeDir);
         AppDomain.CurrentDomain.AssemblyResolve += (s, e) =>
             e.Name.StartsWith("Siemens.Simatic.Simulation.Runtime.Api", StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrEmpty(_apiDllPath) && File.Exists(_apiDllPath)
@@ -1076,5 +1093,172 @@ internal static class Log
         string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + msg;
         Console.WriteLine(line);
         try { lock (_l) { if (!string.IsNullOrEmpty(File)) System.IO.File.AppendAllText(File, line + Environment.NewLine); } } catch { }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Windows Service that runs as LocalSystem (session 0) and LAUNCHES the web app in the active
+// interactive session with the user's elevated token. PLCSIM Advanced cannot do networking from
+// session 0, so the service itself never touches PLCSIM; it is only a launcher/supervisor that gives
+// you a real service to Start/Stop from services.msc / Task Manager.
+internal sealed class PlcService : ServiceBase
+{
+    private readonly string _exeDir;
+    private Thread _worker;
+    private volatile bool _stopping;
+    private IntPtr _child = IntPtr.Zero;
+
+    public PlcService(string exeDir)
+    {
+        _exeDir = exeDir;
+        ServiceName = "PLCSIM WebControl";
+        CanStop = true;
+        CanShutdown = true;
+    }
+
+    protected override void OnStart(string[] args)
+    {
+        Log.File = Path.Combine(_exeDir, "service.log");
+        Log.Write("=== Service OnStart (launcher) ===");
+        _stopping = false;
+        _worker = new Thread(Run);
+        _worker.IsBackground = true;
+        _worker.Start();
+    }
+
+    private void Run()
+    {
+        string exe = Path.Combine(_exeDir, "PlcsimWebControl.exe");
+        bool warnedNoSession = false;
+        while (!_stopping)
+        {
+            try
+            {
+                if (!SessionLauncher.IsAlive(_child))
+                {
+                    if (_child != IntPtr.Zero) { SessionLauncher.Close(_child); _child = IntPtr.Zero; }
+                    IntPtr p;
+                    string why;
+                    if (SessionLauncher.TryLaunchInteractive(exe, _exeDir, out p, out why))
+                    {
+                        _child = p; warnedNoSession = false;
+                        Log.Write("Launched web app in the interactive session.");
+                    }
+                    else if (!warnedNoSession)
+                    {
+                        warnedNoSession = true;
+                        Log.Write("Waiting for an interactive session before launching the web app (" + why + ").");
+                    }
+                }
+            }
+            catch (Exception ex) { Log.Write("Service loop error: " + ex.Message); }
+            for (int i = 0; i < 50 && !_stopping; i++) Thread.Sleep(100); // ~5s, responsive to Stop
+        }
+    }
+
+    protected override void OnStop() { StopChild("OnStop"); }
+    protected override void OnShutdown() { StopChild("OnShutdown"); }
+
+    private void StopChild(string reason)
+    {
+        _stopping = true;
+        Log.Write("=== Service " + reason + " ===");
+        try { SessionLauncher.Kill(_child); } catch { }
+        _child = IntPtr.Zero;
+    }
+}
+
+// Launches a process in the active interactive session with the logged-in user's (elevated) token.
+internal static class SessionLauncher
+{
+    [DllImport("kernel32.dll")] private static extern uint WTSGetActiveConsoleSessionId();
+    [DllImport("wtsapi32.dll", SetLastError = true)] private static extern bool WTSQueryUserToken(uint sessionId, out IntPtr token);
+    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool DuplicateTokenEx(IntPtr existing, uint access, IntPtr attrs, int impLevel, int tokenType, out IntPtr newToken);
+    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool GetTokenInformation(IntPtr token, int infoClass, IntPtr info, int len, out int retLen);
+    [DllImport("userenv.dll", SetLastError = true)] private static extern bool CreateEnvironmentBlock(out IntPtr env, IntPtr token, bool inherit);
+    [DllImport("userenv.dll", SetLastError = true)] private static extern bool DestroyEnvironmentBlock(IntPtr env);
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern bool CreateProcessAsUser(IntPtr token, string app, string cmd, IntPtr procAttrs, IntPtr threadAttrs, bool inherit, uint flags, IntPtr env, string curDir, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool TerminateProcess(IntPtr h, uint code);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern uint WaitForSingleObject(IntPtr h, uint ms);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct STARTUPINFO
+    {
+        public int cb; public string lpReserved; public string lpDesktop; public string lpTitle;
+        public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags;
+        public short wShowWindow, cbReserved2; public IntPtr lpReserved2, hStdInput, hStdOutput, hStdError;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION { public IntPtr hProcess, hThread; public int dwProcessId, dwThreadId; }
+
+    private const int TokenPrimary = 1;
+    private const int SecurityImpersonation = 2;
+    private const int TokenLinkedToken = 19;
+    private const uint MAXIMUM_ALLOWED = 0x02000000;
+    private const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+    private const uint CREATE_NO_WINDOW = 0x08000000;
+    private const uint WAIT_OBJECT_0 = 0;
+    private const uint INVALID_SESSION = 0xFFFFFFFF;
+
+    public static bool TryLaunchInteractive(string exePath, string workDir, out IntPtr hProcess, out string why)
+    {
+        hProcess = IntPtr.Zero; why = "";
+        IntPtr userToken = IntPtr.Zero, elevated = IntPtr.Zero, primary = IntPtr.Zero, env = IntPtr.Zero;
+        try
+        {
+            uint sid = WTSGetActiveConsoleSessionId();
+            if (sid == INVALID_SESSION || sid == 0) { why = "no active console session"; return false; }
+            if (!WTSQueryUserToken(sid, out userToken)) { why = "no user logged on (err " + Marshal.GetLastWin32Error() + ")"; return false; }
+
+            // Prefer the elevated (linked) token so the web app runs elevated, matching PLCSIM's needs.
+            IntPtr tokenToUse = userToken;
+            try
+            {
+                int len = IntPtr.Size;
+                IntPtr buf = Marshal.AllocHGlobal(len);
+                try { if (GetTokenInformation(userToken, TokenLinkedToken, buf, len, out len)) { IntPtr linked = Marshal.ReadIntPtr(buf); if (linked != IntPtr.Zero) { elevated = linked; tokenToUse = elevated; } } }
+                finally { Marshal.FreeHGlobal(buf); }
+            }
+            catch { }
+
+            if (!DuplicateTokenEx(tokenToUse, MAXIMUM_ALLOWED, IntPtr.Zero, SecurityImpersonation, TokenPrimary, out primary))
+            { why = "DuplicateTokenEx err " + Marshal.GetLastWin32Error(); return false; }
+
+            CreateEnvironmentBlock(out env, primary, false);
+
+            var si = new STARTUPINFO();
+            si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
+            si.lpDesktop = "winsta0\\default";
+            PROCESS_INFORMATION pi;
+            bool ok = CreateProcessAsUser(primary, exePath, null, IntPtr.Zero, IntPtr.Zero, false,
+                CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW, env, workDir, ref si, out pi);
+            if (!ok) { why = "CreateProcessAsUser err " + Marshal.GetLastWin32Error(); return false; }
+            if (pi.hThread != IntPtr.Zero) CloseHandle(pi.hThread);
+            hProcess = pi.hProcess;
+            return true;
+        }
+        finally
+        {
+            if (env != IntPtr.Zero) DestroyEnvironmentBlock(env);
+            if (primary != IntPtr.Zero) CloseHandle(primary);
+            if (elevated != IntPtr.Zero) CloseHandle(elevated);
+            if (userToken != IntPtr.Zero) CloseHandle(userToken);
+        }
+    }
+
+    public static bool IsAlive(IntPtr hProcess)
+    {
+        if (hProcess == IntPtr.Zero) return false;
+        return WaitForSingleObject(hProcess, 0) != WAIT_OBJECT_0;
+    }
+
+    public static void Close(IntPtr hProcess) { if (hProcess != IntPtr.Zero) CloseHandle(hProcess); }
+
+    public static void Kill(IntPtr hProcess)
+    {
+        if (hProcess == IntPtr.Zero) return;
+        try { TerminateProcess(hProcess, 0); } catch { }
+        CloseHandle(hProcess);
     }
 }

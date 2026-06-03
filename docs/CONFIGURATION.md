@@ -1,6 +1,6 @@
 # Configuration reference
 
-Settings live in `appconfig.txt` next to `PlcWebControl.exe` (`key = value`; `#`/`;` = comment; blank =
+Settings live in `appconfig.txt` next to `PlcsimWebControl.exe` (`key = value`; `#`/`;` = comment; blank =
 built-in default). The service rewrites this file when you change settings in the UI, so edit it by hand
 only while the service is **stopped**. Start from `appconfig.example.txt`.
 

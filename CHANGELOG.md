@@ -27,3 +27,7 @@ First public release.
 - Self-contained: builds with the in-box .NET Framework `csc.exe` (no Visual Studio / .NET SDK),
   auto-detects the Siemens PLCSIM Advanced API DLL, and runs as an always-on Scheduled Task.
 - Guided installer, uninstaller, and an optional auto-logon helper for unattended boot.
+- Installs by default as a **Windows Service** (manageable from `services.msc` / Task Manager). Because
+  PLCSIM can't run from session 0, the service is a launcher that starts the web app in the logged-in
+  interactive session with the user's elevated token. `-AsTask` installs a Scheduled Task instead.
+- The executable is named **`PlcsimWebControl.exe`** (matching the project name).

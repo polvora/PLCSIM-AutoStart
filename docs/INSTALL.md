@@ -7,9 +7,10 @@
 
 ## Install
 1. Download the project — green **Code → Download ZIP** — which gives **`PLCSIM-WebControl-main.zip`**
-   (the prebuilt `PlcWebControl.exe` is inside). Extract it; you get a `PLCSIM-WebControl-main` folder.
+   (the prebuilt `PlcsimWebControl.exe` is inside). Extract it; you get a `PLCSIM-WebControl-main` folder.
 2. **Double-click `Install.cmd`** and accept the UAC prompt. It finds the PLCSIM DLL, opens the LAN
-   port, creates `appconfig.txt`, and registers an always-on task **"PLCSIM WebControl"**.
+   port, creates `appconfig.txt`, and installs the **Windows Service "PLCSIM WebControl"** (you can
+   Start/Stop it from `services.msc` / Task Manager). Add `-AsTask` to install a Scheduled Task instead.
 
    > Because it was downloaded from the internet, Windows may first show a security warning ("Windows
    > protected your PC" / "Open File - Security Warning"). Choose **More info → Run anyway** — it's
@@ -19,20 +20,25 @@
    to bind to localhost).
 3. Open **http://localhost:8090** (or `http://<this-machine-ip>:8090` from another machine).
 
-Manage it:
+Manage it (or use `services.msc` / Task Manager → Services):
 ```powershell
-Start-ScheduledTask -TaskName "PLCSIM WebControl"
-Stop-ScheduledTask  -TaskName "PLCSIM WebControl"
+Start-Service "PLCSIM WebControl"
+Stop-Service  "PLCSIM WebControl"
 Get-Content .\webcontrol.log -Tail 30 -Wait
 ```
 
-## Why it runs at logon (not as a Windows service)
+## How the service works (the session-0 catch)
 PLCSIM Advanced only does networking inside a **logged-in Windows session** — a user signed in to the
-desktop, not a hidden background service (the SYSTEM account). Run as SYSTEM and networking fails
-(`-48 CommunicationInterfaceNotAvailable`). So the task runs as your user at logon.
+desktop, not the hidden SYSTEM / session-0 context a normal service runs in (run there and networking
+fails with `-48 CommunicationInterfaceNotAvailable`).
 
-The catch: it runs only while someone is logged in. For a server that must recover on its own after a
-reboot, enable auto-logon (below).
+So the installed service is a **launcher**: it runs as LocalSystem (so it shows up in `services.msc` and
+you can Start/Stop it), but on start it launches the actual web app inside the logged-in user's
+interactive session, with that user's elevated token — which is where PLCSIM works.
+
+The catch: there must be a logged-in session for it to launch into. For a server that must recover on
+its own after a reboot, enable auto-logon (below). The `-AsTask` option skips the service and runs the
+app directly from a Scheduled Task at logon instead.
 
 ## Unattended boot (auto-logon)
 PLCSIM only runs while a user is signed in, so for a server that must recover on its own after a
@@ -53,6 +59,6 @@ local-only access, install with `-LocalOnly`. No authentication — keep it on a
 ```powershell
 .\scripts\uninstall.ps1
 ```
-Removes the task and the firewall/URL rule; leaves your files, config, logs, and workspaces. If you set
+Removes the service (or task) and the firewall/URL rule; leaves your files, config, logs, and workspaces. If you set
 auto-logon, undo it via Sysinternals Autologon or by clearing `AutoAdminLogon` under
 `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon`.

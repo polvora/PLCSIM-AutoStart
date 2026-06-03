@@ -34,12 +34,12 @@ netsh http add urlacl url=http://+:8090/ user="DOMAIN\User"
 ```
 
 ## Rebuild fails: `CS0016 ... being used by another process`
-The running service locks `PlcWebControl.exe`. Stop it first (elevated):
+The running app locks `PlcsimWebControl.exe`. Stop it first (elevated):
 ```powershell
-Stop-ScheduledTask -TaskName "PLCSIM WebControl"
-Get-Process PlcWebControl | Stop-Process -Force
+Stop-Service "PLCSIM WebControl"            # or: Stop-ScheduledTask -TaskName "PLCSIM WebControl"
+Get-Process PlcsimWebControl | Stop-Process -Force
 .\scripts\build.ps1
-Start-ScheduledTask -TaskName "PLCSIM WebControl"
+Start-Service "PLCSIM WebControl"           # or: Start-ScheduledTask -TaskName "PLCSIM WebControl"
 ```
 
 ## Red "SAFE MODE" banner

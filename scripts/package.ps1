@@ -17,7 +17,7 @@ $stage = Join-Path $dist "PLCSIM-WebControl-$Version"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-Copy-Item (Join-Path $root "PlcWebControl.exe")        $stage
+Copy-Item (Join-Path $root "PlcsimWebControl.exe")        $stage
 Copy-Item (Join-Path $root "appconfig.example.txt")    $stage
 Copy-Item (Join-Path $root "Install.cmd")              $stage -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $root "Uninstall.cmd")            $stage -ErrorAction SilentlyContinue

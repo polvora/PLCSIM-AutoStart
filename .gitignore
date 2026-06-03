@@ -1,4 +1,4 @@
-# The prebuilt PlcWebControl.exe IS committed so the repo download is ready to run.
+# The prebuilt PlcsimWebControl.exe IS committed so the repo download is ready to run.
 # Rebuild it locally with scripts\build.ps1 after changing src\.
 *.pdb
 

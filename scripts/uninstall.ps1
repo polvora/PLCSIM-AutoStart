@@ -1,4 +1,4 @@
-# uninstall.ps1 - Removes the PLCSIM-WebControl scheduled task and (optionally) its LAN bindings.
+# uninstall.ps1 - Removes the PLCSIM-WebControl Windows Service / scheduled task and its LAN bindings.
 #
 # RUN THIS IN AN ELEVATED POWERSHELL (Run as administrator).
 # It does NOT delete the program files, your appconfig.txt, logs, or PLCSIM workspaces.
@@ -15,10 +15,18 @@ if (-not $id.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     return
 }
 
-Write-Host "Stopping and removing scheduled task '$TaskName'..."
+Write-Host "Stopping and removing '$TaskName' (service and/or task)..."
+# Windows Service (if installed that way)
+$svc = Get-Service -Name $TaskName -ErrorAction SilentlyContinue
+if ($svc) {
+    if ($svc.Status -ne 'Stopped') { Stop-Service -Name $TaskName -Force -ErrorAction SilentlyContinue }
+    & sc.exe delete "$TaskName" | Out-Null
+}
+# Scheduled Task (if installed that way)
 Stop-ScheduledTask -TaskName $TaskName
-Get-Process PlcWebControl | Stop-Process -Force
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+# The web app process (launched in the interactive session)
+Get-Process PlcsimWebControl | Stop-Process -Force
 
 Write-Host "Removing LAN URL reservation and firewall rule (if any)..."
 cmd /c "netsh http delete urlacl url=http://+:$Port/" | Out-Null
