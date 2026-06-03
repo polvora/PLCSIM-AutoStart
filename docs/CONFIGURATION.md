@@ -1,12 +1,8 @@
 # Configuration reference
 
-All settings live in `appconfig.txt` next to `PlcWebControl.exe`. It is a simple `key = value` file
-(`#` or `;` start a comment). A **blank value means "use the built-in default"**.
-
-> The service **rewrites** `appconfig.txt` whenever you change settings from the web UI. Edit it by
-> hand only while the service is **stopped**, or your edits may be overwritten.
-
-Start from `appconfig.example.txt`.
+Settings live in `appconfig.txt` next to `PlcWebControl.exe` (`key = value`; `#`/`;` = comment; blank =
+built-in default). The service rewrites this file when you change settings in the UI, so edit it by hand
+only while the service is **stopped**. Start from `appconfig.example.txt`.
 
 ## Web server
 

@@ -3,9 +3,9 @@
 # RUN THIS IN AN ELEVATED POWERSHELL (Run as administrator).
 #
 # It registers a Scheduled Task that starts the web service whenever the install account logs on,
-# so the service is always available. PLCSIM Advanced REQUIRES an interactive user session, so the
-# task runs as your user at logon (not as SYSTEM). For fully unattended boot, also configure
-# auto-logon (see scripts\setup-autologon.ps1).
+# so the service is always available. PLCSIM Advanced only works inside a logged-in Windows session
+# (a signed-in desktop, not the hidden SYSTEM account), so the task runs as your user at logon. For
+# fully unattended boot, also configure auto-logon (see scripts\setup-autologon.ps1).
 #
 # Usage:
 #   .\install.ps1                 # interactive; LAN-open by default (remote access is the main feature)
@@ -93,7 +93,7 @@ if ($Lan) {
     }
 }
 
-# 6) Register the always-on Scheduled Task (runs at logon, in the interactive session, elevated).
+# 6) Register the always-on Scheduled Task (runs at logon, in the logged-in session, elevated).
 $curUser = "$env:USERDOMAIN\$env:USERNAME"
 $action  = New-ScheduledTaskAction -Execute $exe -WorkingDirectory $root
 $set     = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `

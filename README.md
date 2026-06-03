@@ -39,9 +39,9 @@ Beyond remote control and auto-start:
 - **Windows 10 / Windows Server 2016 or newer** (x64).
 - **Siemens S7-PLCSIM Advanced** installed (tested with **V20**). Provides the runtime and the API DLL.
 - **.NET Framework 4.x** — built into modern Windows; no Visual Studio or .NET SDK required.
-- An **interactive user session**. PLCSIM Advanced cannot do TCP/IP networking from the SYSTEM /
-  session-0 context, so the service runs as your user at logon. For unattended boot, enable auto-logon
-  (an optional helper is included). See [docs/INSTALL.md](docs/INSTALL.md).
+- A **logged-in Windows session** — i.e. a user signed in to the desktop, not a hidden background
+  service. PLCSIM needs this for networking, so the service runs as your user at logon. For a server to
+  recover on its own after a reboot, enable auto-logon (helper included; see [docs/INSTALL.md](docs/INSTALL.md)).
 
 ---
 
@@ -92,34 +92,26 @@ appconfig.example.txt       configuration template
 
 ## Safeguards for unattended operation
 
-Powering PLCs on automatically, with no human watching, needs a few guardrails. These run quietly in
-the background — in normal use you never notice them — but they are what makes auto-start safe to rely
-on, so they are documented here.
+Auto-start runs with no one watching, so a few guardrails stop a bad setup from looping. They run in
+the background; you normally never see them.
 
-**Power-on limit + hard cap.** `max_powered_on` (editable in the UI) is the operational limit.
-`hard_max_powered_on` (in `appconfig.txt`, not editable from the UI) is the real capacity of the
-machine. The service always enforces `min(max_powered_on, hard_max_powered_on)`, so raising the limit
-in the UI can never push the machine past what it can handle.
+**Power-on limit + hard cap.** `max_powered_on` (UI-editable) is the operational limit;
+`hard_max_powered_on` (disk-only) is the machine's real capacity. The service enforces the smaller of
+the two, so the UI can't push the machine past what it can handle.
 
-**Auto-start mode `last`.** Every power on/off records the set of running PLCs. At boot the service
-restores that set (capped to the limit). A reboot therefore comes back to where it was.
+**Loop-breaker.** A counter is bumped before each auto-start and reset only after the service passes
+repeated `/health` probes for a while — so a *soft freeze* (alive but unresponsive) won't clear it.
+After `boot_fail_limit` boots that never stabilize, the service enters **SAFE MODE**: no auto-start, a
+red banner in the UI, and a *Re-enable* button. You can also arm it yourself before forcing a restart
+(UI toggle or the `SAFEMODE` file).
 
-**Loop-breaker.** Before auto-starting, the service increments an on-disk attempt counter. It is reset
-to 0 only after the service stays healthy for a while — verified by repeated HTTP probes to its own
-`/health` endpoint, so a *soft freeze* (processes alive but the web layer unresponsive) does **not**
-count as healthy. After `boot_fail_limit` consecutive boots that never stabilize, the service enters
-**SAFE MODE**: it skips auto-start, shows a banner in the UI, and waits for you to click *Re-enable*.
-
-**Manual safe mode.** A toggle in the UI (or the `SAFEMODE` flag file) suppresses auto-start on the
-next boot — handy right before you force-restart a sluggish machine.
-
-See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for every tunable.
+Every value is tunable in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ---
 
 ## Documentation
 
-- [docs/INSTALL.md](docs/INSTALL.md) — install, the interactive-session requirement, auto-logon, LAN access.
+- [docs/INSTALL.md](docs/INSTALL.md) — install, auto-logon, LAN access.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — every `appconfig.txt` key.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common problems and fixes.
 
