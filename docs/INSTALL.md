@@ -6,8 +6,8 @@
 - .NET Framework 4.x (already on modern Windows)
 
 ## Install
-1. Download the project (green **Code → Download ZIP**; the prebuilt `PlcWebControl.exe` is included)
-   and extract it (e.g. `C:\PLCSIM-WebControl`).
+1. Download the project — green **Code → Download ZIP** — which gives **`PLCSIM-WebControl-main.zip`**
+   (the prebuilt `PlcWebControl.exe` is inside). Extract it; you get a `PLCSIM-WebControl-main` folder.
 2. **PowerShell → Run as administrator**, `cd` into that folder, and run:
    ```powershell
    .\scripts\install.ps1
