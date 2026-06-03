@@ -4,16 +4,19 @@
 
 PLC-WebControl is a small always-on web app that **extends** S7-PLCSIM Advanced — it does **not**
 replace it. You still create and configure your virtual PLCs in the Siemens PLCSIM Advanced GUI as
-usual; PLC-WebControl reads that workspace and adds the two things the GUI doesn't give you:
+usual; PLC-WebControl reads that workspace and adds what the GUI doesn't give you:
 
 - 🌐 **Remote control from a browser** — power on, RUN, STOP and power off your PLCs from any machine
   on the network. Drive a simulation host from your own desktop or another VM, with no Siemens GUI and
   no remote-desktop session required.
 - 🔄 **Automatic startup** — have your PLCs come back up on their own after a server reboot or power
   cut, completely unattended. The original GUI can't do this.
+- 💾 **Persistent instance memory** — instances always run from PLCSIM's persistent storage, so a PLC's
+  downloaded program survives a reboot or power cut and comes back exactly as it was. Started from the
+  GUI an instance lives in RAM and is lost on a full restart; this is what makes auto-start worthwhile.
 
 Everything else (a power-on limit, per-PLC IP, network mode, freeze-loop safeguards) is there to make
-those two features safe and convenient to run unattended.
+those features safe and convenient to run unattended.
 
 > Independent, open-source tool — **not** affiliated with Siemens. It uses the Siemens PLCSIM Advanced
 > API, which you install separately under your own Siemens license. The proprietary Siemens DLL is
@@ -35,6 +38,9 @@ those two features safe and convenient to run unattended.
 
 **Supporting features**
 
+- **Persistent instance memory** — instances run from PLCSIM's native persistent storage, so a PLC's
+  downloaded program survives reboots and power cuts (download it from TIA Portal once). The Siemens GUI
+  keeps a started instance in RAM and loses it on a full restart.
 - **Power-on limit** (default **1**) with a separate, disk-only **hard safety cap**, so you never start
   more PLCs than the machine can actually handle.
 - **Per-PLC IP override**, re-applied on every power-on, so a PLC stays reachable on your subnet.
