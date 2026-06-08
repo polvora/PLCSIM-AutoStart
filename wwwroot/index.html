@@ -47,6 +47,14 @@
   #toast.ok{border-color:#1c5}#toast.bad{border-color:#a33}
   .note{font-size:13px;color:var(--mut);margin-top:4px}
   .warn{color:var(--stop)}
+  #modalBg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+  #modalBg.show{display:flex}
+  .modal{background:var(--card);border:1px solid var(--bad);border-radius:12px;max-width:560px;width:92%;padding:22px 24px}
+  .modal h3{margin:0 0 12px;color:#ffb4b4;font-size:17px}
+  .modal p{font-size:14px;line-height:1.55;margin:0 0 12px}
+  .modal .danger-box{background:#3a1d1d;border:1px solid var(--bad);border-radius:8px;padding:12px 14px;margin:0 0 16px;color:#ffd7d9;font-size:13px;line-height:1.55}
+  .modal .mrow{display:flex;align-items:center;gap:12px;justify-content:flex-end;margin-top:6px}
+  .modal input{width:70px}
 </style>
 </head>
 <body>
@@ -111,12 +119,10 @@
       <select id="asInstance"></select>
     </div>
     <div class="note" id="asNote" style="margin-top:8px"></div>
-    <div class="row" style="margin-top:12px">
-      <label class="sub">🛡️ Auto-start cap (max PLCs powered on at boot):</label>
-      <input id="hardOn" type="number" min="1" max="20" style="width:60px">
-      <button id="hardSave">Apply</button>
+    <div class="row warn" style="margin-top:12px">
+      <span>🛡️ Auto-start cap: <b id="hardVal">1</b> PLC(s) powered on at boot</span>
+      <button id="hardChange">Change…</button>
     </div>
-    <div class="note warn" id="hardNote" style="margin-top:6px"></div>
     <div class="row" style="margin-top:10px">
       <label class="toggle"><input type="checkbox" id="suppressNext"><span></span></label>
       <span class="sub">Suppress auto-start on the <b>next boot</b> (manual safe mode — use it before a forced restart)</span>
@@ -148,9 +154,28 @@
 
 <div id="toast"></div>
 
+<div id="modalBg">
+  <div class="modal">
+    <h3>⚠️ Change the auto-start cap</h3>
+    <p>This sets the <b>maximum number of PLCs that auto-start powers on after a reboot</b> — automatically, with <b>nobody watching</b>.</p>
+    <div class="danger-box">
+      If you set this higher than this machine can actually run unattended, it <b>will freeze on boot</b>.
+      And because auto-start retries on every restart, the machine can drop into a <b>freeze → reboot → freeze loop</b>
+      (a built-in loop-breaker stops it after a couple of failed boots, but the machine is unusable until then).
+      Only raise it to a number you are <b>sure</b> this machine handles unattended.
+    </div>
+    <div class="mrow">
+      <label class="sub">New cap:</label>
+      <input id="hardModalInput" type="number" min="1" max="20">
+      <button id="hardCancel">Cancel</button>
+      <button class="danger" id="hardConfirm">Apply cap</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
-let S = null, busy = false;
+let S = null, busy = false, netDirty = false;
 
 function toast(msg, ok){ const t=$('#toast'); t.textContent=msg; t.className='show '+(ok?'ok':'bad'); setTimeout(()=>t.className='',2600); }
 async function api(ep, body){
@@ -240,16 +265,16 @@ function renderControls(){
   $('#asNote').innerHTML = (mode==='fixed')
     ? 'At server startup it will always start the selected fixed instance.'
     : ('At server startup it will restore <b>whatever was powered on</b> last time'+(last.length?': <b>'+last.join(', ')+'</b>':' (right now: none)')+'.');
-  const ho=$('#hardOn'); if(document.activeElement!==ho) ho.value = hard;
-  $('#hardNote').innerHTML = `⚠️ This caps how many PLCs <b>auto-start</b> powers on after a reboot. Auto-start runs with <b>nobody watching</b>: if it brings up more than this machine can handle, the VM can <b>freeze</b> — and because it retries every boot, you'd get a freeze/restart loop (the built-in loop-breaker eventually stops it, but it's disruptive). Keep it at a number this machine can definitely run <b>unattended</b>. Your manual power-on limit above is separate and <b>not</b> capped by this.`;
+  $('#hardVal').textContent = hard;
   if(document.activeElement!==$('#suppressNext')) $('#suppressNext').checked = !!S.suppressNextBoot;
 
-  // network
-  if(document.activeElement!==$('#netMode')) $('#netMode').value = S.network.mode;
-  $('#adapterWrap').style.display = (S.network.mode==='TCPIPMultipleAdapter') ? 'inline-flex' : 'none';
+  // network (don't clobber an unapplied selection: skip while the user has changes pending)
+  if(!netDirty && document.activeElement!==$('#netMode')) $('#netMode').value = S.network.mode;
+  $('#adapterWrap').style.display = ($('#netMode').value==='TCPIPMultipleAdapter') ? 'inline-flex' : 'none';
 }
 
 async function loadAdapters(){
+  if(netDirty) return;                 // don't rebuild the list while a change is pending
   const r = await api('adapters');
   const sel=$('#netAdapter'); if(document.activeElement===sel) return;
   sel.innerHTML='';
@@ -271,19 +296,29 @@ async function saveAutostart(){ const r=await api('autostart',{enabled:$('#asEna
 $('#asEnabled').onchange = saveAutostart;
 $('#asInstance').onchange = saveAutostart;
 $('#asMode').onchange = () => { $('#asInstance').style.display = ($('#asMode').value==='fixed')?'':'none'; saveAutostart(); };
-$('#maxSave').onclick = async () => { const r=await api('limit',{max:Number($('#maxOn').value)||1}); toast(r.message,r.ok); await load(); };
-$('#hardSave').onclick = async () => {
-  const v = Number($('#hardOn').value)||1, cur = S.hardMaxPoweredOn||1;
-  if (v > cur && !confirm(`Raise the auto-start cap to ${v}?\n\nAfter every reboot, auto-start will try to power on up to ${v} PLCs with nobody watching. If that's more than this machine can run unattended, it can freeze on boot. Continue?`)) { $('#hardOn').value = cur; return; }
+// operational limit: save on commit (blur/Enter) so the 3s refresh never reverts an edit
+async function saveMax(){ const r=await api('limit',{max:Number($('#maxOn').value)||1}); toast(r.message,r.ok); await load(); }
+$('#maxOn').onchange = saveMax;
+$('#maxSave').onclick = saveMax;
+
+// auto-start cap: only via the warning modal (not edited inline)
+$('#hardChange').onclick = () => { $('#hardModalInput').value = (S&&S.hardMaxPoweredOn)||1; $('#modalBg').classList.add('show'); $('#hardModalInput').focus(); };
+$('#hardCancel').onclick = () => $('#modalBg').classList.remove('show');
+$('#modalBg').onclick = e => { if(e.target===$('#modalBg')) $('#modalBg').classList.remove('show'); };
+$('#hardConfirm').onclick = async () => {
+  const v = Number($('#hardModalInput').value)||1;
+  $('#modalBg').classList.remove('show');
   const r = await api('autostart-cap', {max: v}); toast(r.message, r.ok); await load();
 };
+
 $('#safeClear').onclick = async () => { const r=await api('clear-safemode',{}); toast(r.message,r.ok); await load(); };
 $('#suppressNext').onchange = async e => { const r=await api('safemode',{enabled:e.target.checked}); toast(r.message,r.ok); await load(); };
-$('#netMode').onchange = () => { $('#adapterWrap').style.display = ($('#netMode').value==='TCPIPMultipleAdapter') ? 'inline-flex' : 'none'; };
+$('#netMode').onchange = () => { netDirty=true; $('#adapterWrap').style.display = ($('#netMode').value==='TCPIPMultipleAdapter') ? 'inline-flex' : 'none'; };
+$('#netAdapter').onchange = () => { netDirty=true; };
 $('#netSave').onclick = async () => {
   const opt=$('#netAdapter').selectedOptions[0];
   const r=await api('network',{mode:$('#netMode').value, adapterIndex:Number($('#netAdapter').value), adapterName:opt?opt.dataset.name:''});
-  toast(r.message,r.ok); await load();
+  netDirty=false; toast(r.message,r.ok); await load();
 };
 setInterval(()=>{ $('#clock').textContent=new Date().toLocaleTimeString(); }, 1000);
 (async()=>{ await load(); await loadAdapters(); setInterval(load, 3000); })();
