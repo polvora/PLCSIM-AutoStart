@@ -767,7 +767,7 @@ internal sealed class PlcManager
                 var others = on.Where(n => !string.Equals(n, name, StringComparison.OrdinalIgnoreCase)).ToList();
                 if (!nameAlreadyOn && others.Count >= _cfg.MaxPoweredOn)
                 {
-                    string lim = _cfg.MaxPoweredOn == 1 ? "only one PLC powered on at a time" : ("at most " + _cfg.MaxPoweredOn + " PLCs powered on at a time");
+                    string lim = _cfg.MaxPoweredOn == 1 ? "only 1 PLC powered on at a time" : ("at most " + _cfg.MaxPoweredOn + " PLCs powered on at a time");
                     return ActionResult.Bad("Cannot power on '" + name + "': " + others.Count +
                         " already powered on (" + string.Join(", ", others.ToArray()) + "). Power one off first (" + lim + ").");
                 }

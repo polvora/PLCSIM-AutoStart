@@ -246,7 +246,7 @@ function renderControls(){
   // limit (the web UI never exceeds the hard safety cap)
   const mo=$('#maxOn'); if(document.activeElement!==mo) mo.value = max;
   $('#limitNote').innerHTML = (max===1
-    ? 'Rule: only <b>one PLC powered on</b> at a time. Powering on another is <b>blocked</b> — power the active one off first.'
+    ? 'Rule: only <b>1 PLC powered on</b> at a time. Powering on another is <b>blocked</b> — power the active one off first.'
     : `Rule: at most <b>${max} PLCs powered on</b> at a time. Once the limit is reached, powering on another is <b>blocked</b> until you power one off.`);
 
   // workspace dropdown
