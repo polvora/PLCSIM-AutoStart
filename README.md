@@ -9,7 +9,9 @@ replace it. You still create and configure your virtual PLCs in the Siemens PLCS
 usual; PLCSIM Auto-Start reads that workspace and adds what the GUI doesn't give you:
 
 - 🔄 **Automatic startup** — your PLCs come back up on their own after a server reboot, completely
-  unattended. This is the headline feature.
+  unattended. This is the headline feature. Before turning it on, read
+  [enabling auto-start safely](#enabling-auto-start-capacity-and-the-freeze-loop-risk) — there is one
+  capacity decision that keeps a busy machine from getting stuck on boot.
 - 🌐 **Remote control from a browser** — power on, RUN, STOP and power off your PLCs from any machine
   on the network. Manage a headless simulation host from your own desktop or another VM, with no
   remote-desktop session needed.
@@ -27,9 +29,7 @@ usual; PLCSIM Auto-Start reads that workspace and adds what the GUI doesn't give
 
 Beyond remote control and auto-start:
 
-- **Power-on limit** (default **1**, freely adjustable in the UI to test capacity) plus an
-  **auto-start cap** (editable in the UI, with a warning) that bounds how many PLCs auto-start brings
-  up at boot — the freeze protection for unattended reboots.
+- **Power-on limit** — cap how many PLCs can be powered on at once (default **1**, adjustable in the UI).
 - **Per-PLC IP override**, re-applied on every power-on, so a PLC stays reachable on your subnet.
 - **Network mode**: Softbus (zero-config) or TCP/IP mapped to a host adapter.
 - **Maintenance mode** — a one-click release of the PLCSIM connection so the official control panel /
@@ -38,8 +38,6 @@ Beyond remote control and auto-start:
 - **Installs as a Windows Service** you Start/Stop from `services.msc` / Task Manager. (Because PLCSIM
   needs an interactive session, the service is a launcher that runs the app in the logged-in session;
   `-AsTask` uses a Scheduled Task instead. See [docs/INSTALL.md](docs/INSTALL.md#how-the-service-works-the-session-0-catch).)
-- **Unattended-boot safeguards** that keep auto-start from getting a machine stuck in a freeze/restart
-  loop ([details below](#safeguards-for-unattended-operation)).
 
 ---
 
@@ -82,21 +80,33 @@ needed, just the in-box .NET Framework compiler.
 
 ---
 
-## Safeguards for unattended operation
+## Enabling auto-start: capacity and the freeze-loop risk
 
-Auto-start runs with no one watching, so a few guardrails stop a bad setup from looping. They run in
-the background; you normally never see them.
+Auto-start powers your PLCs on at **every** boot, with no one watching. That convenience comes with one
+thing to get right, because a virtual S7-PLCSIM PLC is **heavy** — each running instance takes real CPU
+and RAM on the host.
 
-**Power-on limit + hard cap.** `max_powered_on` (UI-editable) is the operational limit for *manual*
-power-ons — it is **not** capped by the hard cap, so you can raise it to discover how many PLCs your
-machine really handles. `hard_max_powered_on` (editable in the UI, with a warning) limits only the **auto-start** count: after
-an unattended reboot, auto-start restores at most that many — so even if a manual test froze the box,
-the next boot stays within the safe number.
+**The failure mode (why the cap exists).** If you let auto-start bring up more PLCs than the machine can
+actually run at the same time, the host can bog down — or, in the worst case, lock up — while those
+instances all start at boot. And because auto-start runs again on *every* reboot, a freeze that forces a
+restart just hits the same overload again: **freeze → reboot → freeze**, a loop that can leave the
+machine unreachable until someone intervenes. Many PLCSIM users never run into this; but on a headless,
+auto-logon server it is exactly the situation that can turn a small misjudgment about capacity into a
+stuck box. The point isn't that it *will* freeze — it's that nobody is there to catch it if it does.
 
-**Loop-breaker.** A counter is bumped before each auto-start and reset only after the service passes
-repeated `/health` probes for a while — so a *soft freeze* (alive but unresponsive) won't clear it.
-After `boot_fail_limit` boots that never stabilize, the service enters **SAFE MODE**: no auto-start, a
-red banner in the UI, and a *Re-enable* button.
+**The decision you make.** The *auto-start cap* (`hard_max_powered_on`) is simply **the most PLCs you are
+confident this machine can run unattended at once**. Auto-start never brings up more than that, so the
+boot path stays inside a number you trust. The default is **1** — the safe baseline. It governs the
+**boot path only**: your manual power-on limit (`max_powered_on`) can go higher, so you can still test
+real capacity by hand without changing what happens on the next reboot. Both are editable in the UI (the
+cap behind a confirmation, since raising it is the risky direction).
+
+**The backstop, if a setup still misbehaves.** A loop-breaker watches for the freeze loop above: a
+counter is bumped before each auto-start and cleared only after the service passes repeated `/health`
+probes for a while — so a *soft freeze* (processes alive but the machine unresponsive) won't fool it
+into thinking the boot was clean. After `boot_fail_limit` boots that never stabilize, the service enters
+**SAFE MODE**: it skips auto-start, shows a red banner in the UI, and waits for you to fix the load and
+click *Re-enable*. This is the seatbelt — set the cap correctly and you should never need it.
 
 Every value is tunable in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
