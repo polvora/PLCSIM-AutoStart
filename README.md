@@ -93,8 +93,7 @@ the next boot stays within the safe number.
 **Loop-breaker.** A counter is bumped before each auto-start and reset only after the service passes
 repeated `/health` probes for a while — so a *soft freeze* (alive but unresponsive) won't clear it.
 After `boot_fail_limit` boots that never stabilize, the service enters **SAFE MODE**: no auto-start, a
-red banner in the UI, and a *Re-enable* button. You can also arm it yourself before forcing a restart
-(UI toggle or the `SAFEMODE` file).
+red banner in the UI, and a *Re-enable* button.
 
 Every value is tunable in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 

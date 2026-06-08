@@ -15,7 +15,7 @@
 //     last shutdown; mode "fixed" always starts one chosen instance.
 //   * Boot protections against a freeze/restart loop: a boot-attempt counter that only resets
 //     after the service stays healthy for a while (verified by repeated self HTTP /health probes),
-//     a staggered start, and a manual SAFEMODE flag file.
+//     plus a staggered start.
 //   * Optional networking: PLCSIM Softbus (default, zero-config) or TCP/IP mapped to a host
 //     network adapter for real Ethernet communication.
 //
@@ -103,15 +103,8 @@ internal static class Program
             // Instance auto-start WITH PROTECTIONS (loop-breaker + manual flag + staggered start).
             if (_cfg.AutostartEnabled)
             {
-                bool flag = BootGuard.FlagPresent(exeDir);
                 int attempts = BootGuard.ReadAttempts(exeDir);
-                if (flag)
-                {
-                    _plc.SafeMode = true;
-                    _plc.SafeModeReason = "Manual SAFE MODE is active (SAFEMODE flag file present). Auto-start was skipped this boot.";
-                    Log.Write("SAFE MODE (manual): SAFEMODE flag file present. Auto-start SKIPPED.");
-                }
-                else if (attempts >= _cfg.BootFailLimit)
+                if (attempts >= _cfg.BootFailLimit)
                 {
                     _plc.SafeMode = true;
                     _plc.SafeModeReason = "Detected " + attempts + " boots that never stabilized (possible freeze loop). Auto-start was skipped. Check the load / safety cap, then re-enable.";
@@ -371,11 +364,10 @@ internal sealed class ActionResult
     public static ActionResult Bad(string m) { return new ActionResult { Ok = false, Message = m }; }
 }
 
-// Boot protections: on-disk attempt counter (loop-breaker) + manual SAFEMODE flag file.
+// Boot protection: on-disk attempt counter for the freeze-loop breaker.
 internal static class BootGuard
 {
     private static string StateFile(string dir) { return System.IO.Path.Combine(dir, "boot-state.txt"); }
-    private static string FlagFile(string dir) { return System.IO.Path.Combine(dir, "SAFEMODE"); }
 
     public static int ReadAttempts(string dir)
     {
@@ -401,22 +393,6 @@ internal static class BootGuard
         try { File.WriteAllText(StateFile(dir), "attempts=" + n + "\r\n"); }
         catch (Exception ex) { Log.Write("WARN BootGuard.WriteAttempts: " + ex.Message); }
     }
-
-    public static bool FlagPresent(string dir)
-    {
-        try { return File.Exists(FlagFile(dir)); } catch { return false; }
-    }
-
-    public static void SetFlag(string dir, bool on)
-    {
-        try
-        {
-            string f = FlagFile(dir);
-            if (on) { if (!File.Exists(f)) File.WriteAllText(f, "Presence of this file = DO NOT auto-start any instance on the next boot (manual safe mode).\r\n"); }
-            else if (File.Exists(f)) File.Delete(f);
-        }
-        catch (Exception ex) { Log.Write("WARN BootGuard.SetFlag: " + ex.Message); }
-    }
 }
 
 internal sealed class PlcManager
@@ -424,7 +400,7 @@ internal sealed class PlcManager
     private readonly Config _cfg;
     private readonly object _gate = new object();   // serializes all power operations -> enforces the limit atomically
 
-    // Safe mode: auto-start was skipped this boot (by the loop-breaker or the manual flag).
+    // Safe mode: the loop-breaker skipped auto-start this boot after repeated non-stabilizing boots.
     public volatile bool SafeMode = false;
     public string SafeModeReason = "";
 
@@ -956,7 +932,6 @@ internal sealed class WebServer
                     { "hardMaxPoweredOn", _cfg.HardMaxPoweredOn },
                     { "safeMode", _plc.SafeMode },
                     { "safeModeReason", _plc.SafeModeReason },
-                    { "suppressNextBoot", BootGuard.FlagPresent(_exeDir) },
                     { "network", new Dictionary<string,object> { { "mode", _cfg.NetworkMode }, { "adapterIndex", _cfg.AdapterIndex }, { "adapterName", _cfg.AdapterName } } },
                     { "autostart", new Dictionary<string,object> { { "enabled", _cfg.AutostartEnabled }, { "mode", _cfg.AutostartMode }, { "instance", _cfg.AutostartInstance }, { "last", _cfg.LastRunning } } },
                 });
@@ -1020,23 +995,11 @@ internal sealed class WebServer
                     WriteResult(ctx, ActionResult.Good("Auto-start cap = " + newHard + " (auto-start brings up at most " + newHard + " PLC" + (newHard == 1 ? "" : "s") + " after a reboot)"));
                     return;
                 }
-            case "safemode":
-                {
-                    bool on = true;
-                    if (body != null && body.ContainsKey("enabled")) { try { on = Convert.ToBoolean(body["enabled"]); } catch { } }
-                    else if (!string.IsNullOrEmpty(q["enabled"])) on = (q["enabled"] == "1" || string.Equals(q["enabled"], "true", StringComparison.OrdinalIgnoreCase));
-                    BootGuard.SetFlag(_exeDir, on);
-                    WriteResult(ctx, ActionResult.Good(on
-                        ? "Safe mode ARMED: the next boot will NOT auto-start instances."
-                        : "Safe mode disarmed: the next boot will auto-start normally."));
-                    return;
-                }
             case "clear-safemode":
                 {
-                    BootGuard.SetFlag(_exeDir, false);
                     BootGuard.WriteAttempts(_exeDir, 0);
                     _plc.SafeMode = false; _plc.SafeModeReason = "";
-                    WriteResult(ctx, ActionResult.Good("Auto-start re-enabled: boot-attempt counter reset and safe-mode flag cleared."));
+                    WriteResult(ctx, ActionResult.Good("Auto-start re-enabled: boot-attempt counter reset."));
                     return;
                 }
             case "network":

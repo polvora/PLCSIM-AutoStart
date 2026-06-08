@@ -122,10 +122,6 @@
       <span>🛡️ Auto-start cap: <b id="hardVal">1</b> PLC(s) powered on at boot</span>
       <button id="hardChange">Change…</button>
     </div>
-    <div class="row" style="margin-top:10px">
-      <label class="toggle"><input type="checkbox" id="suppressNext"><span></span></label>
-      <span class="sub">Suppress auto-start on the <b>next boot</b> (manual safe mode — use it before a forced restart)</span>
-    </div>
   </div>
 
   <div class="card">
@@ -266,7 +262,6 @@ function renderControls(){
     ? 'At server startup it will always start the selected fixed instance.'
     : ('At server startup it will restore <b>whatever was powered on</b> last time'+(last.length?': <b>'+last.join(', ')+'</b>':' (right now: none)')+'.');
   $('#hardVal').textContent = hard;
-  if(document.activeElement!==$('#suppressNext')) $('#suppressNext').checked = !!S.suppressNextBoot;
 
   // network (don't clobber an unapplied selection: skip while the user has changes pending)
   if(!netDirty && document.activeElement!==$('#netMode')) $('#netMode').value = S.network.mode;
@@ -311,7 +306,6 @@ $('#hardConfirm').onclick = async () => {
 };
 
 $('#safeClear').onclick = async () => { const r=await api('clear-safemode',{}); toast(r.message,r.ok); await load(); };
-$('#suppressNext').onchange = async e => { const r=await api('safemode',{enabled:e.target.checked}); toast(r.message,r.ok); await load(); };
 $('#netMode').onchange = () => { netDirty=true; $('#adapterWrap').style.display = ($('#netMode').value==='TCPIPMultipleAdapter') ? 'inline-flex' : 'none'; };
 $('#netAdapter').onchange = () => { netDirty=true; };
 $('#netSave').onclick = async () => {

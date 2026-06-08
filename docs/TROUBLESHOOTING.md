@@ -43,8 +43,8 @@ Start-Service "PLCSIM AutoStart"           # or: Start-ScheduledTask -TaskName "
 ```
 
 ## Red "SAFE MODE" banner
-Repeated boots never stabilized (or the `SAFEMODE` flag is set), so auto-start was skipped on purpose.
-If it's overloaded, lower `max_powered_on` / `hard_max_powered_on`, then click **Re-enable auto-start**.
+Repeated boots never stabilized, so the loop-breaker skipped auto-start on purpose. If it's overloaded,
+lower the **auto-start cap** (`hard_max_powered_on`), then click **Re-enable auto-start**.
 
 ## A second PLC won't power on
 The limiter. Raise **Max powered on** in the UI (it can't exceed `hard_max_powered_on`) or power one off.

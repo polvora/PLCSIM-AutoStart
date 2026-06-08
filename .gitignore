@@ -6,7 +6,6 @@
 appconfig.txt
 autostart.log
 boot-state.txt
-SAFEMODE
 
 # Release packages
 dist/

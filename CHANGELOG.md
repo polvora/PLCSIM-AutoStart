@@ -20,8 +20,7 @@ First public release.
   - boot-attempt counter that enters SAFE MODE after N non-stabilizing boots,
   - a "clean boot" check gated on repeated self `/health` probes (detects a soft freeze where
     processes stay alive but the web layer becomes unresponsive),
-  - staggered start (one instance at a time, abort on failure),
-  - a manual `SAFEMODE` flag file / UI toggle to suppress auto-start on the next boot.
+  - staggered start (one instance at a time, abort on failure).
 - **Per-PLC IP override** that is re-applied on every power-on.
 - Networking via **Softbus** (default, zero-config) or **TCP/IP** mapped to a host adapter.
 - Self-contained: builds with the in-box .NET Framework `csc.exe` (no Visual Studio / .NET SDK),
