@@ -228,11 +228,16 @@ function renderRows(){
     // Blocked only if this PLC is off and the power-on limit is already reached.
     const blocked = !it.poweredOn && atLimit;
     const active = onList.includes(it.name);
+    // Start only powers on / runs a stopped or off PLC. If it's already running this would be a no-op,
+    // so disable it (to restart, STOP it first; the IP has its own button).
+    const startDisabled = blocked || maint || it.running;
+    const startTitle = (blocked && !maint) ? `title="Limit of ${max} powered on reached; power one off first"`
+                     : (it.running ? `title="Already running — STOP it first to restart"` : '');
     tr.innerHTML = `
       <td><div class="name">${it.name}</div><div class="sub">${it.plcName||''}${it.ip?` · IP ${it.ip}`:''}${it.configured?'':' · not configured'}</div></td>
       <td>${badge(it.state)}${active?' <span class="sub">◀ active</span>':''}</td>
       <td><div class="actions">
-        <button class="primary" data-a="start" data-n="${it.name}" ${(blocked||maint)?'disabled':''} ${(blocked&&!maint)?`title="Limit of ${max} powered on reached; power one off first"`:''}>${it.running?'Restart':'Power on + RUN'}</button>
+        <button class="primary" data-a="start" data-n="${it.name}" ${startDisabled?'disabled':''} ${startTitle}>Power on + RUN</button>
         <button data-a="stop" data-n="${it.name}" ${(it.running&&!maint)?'':'disabled'}>STOP</button>
         <button class="danger" data-a="poweroff" data-n="${it.name}" ${(it.poweredOn&&!maint)?'':'disabled'}>Power off</button>
         <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${(it.poweredOn&&!maint)?'':'disabled'}>IP…</button>
