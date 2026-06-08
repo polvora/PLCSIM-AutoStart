@@ -86,19 +86,21 @@ Auto-start powers your PLCs on at every boot. A virtual S7-PLCSIM PLC uses real 
 setting needs to match what the machine can handle.
 
 **The risk.** If auto-start brings up more PLCs than the machine can run at once, the host can slow down
-or lock up while they start. Since auto-start runs on every boot, a freeze that forces a restart repeats
-on the next boot — a freeze/reboot loop. On an unattended server there is no one there to stop it.
+or lock up while they start. This happens during boot, so it can freeze the machine before Windows even
+finishes starting or reaches the login screen — being in front of it doesn't necessarily let you stop
+it. And because auto-start runs on every boot, a freeze that forces a restart hits the same overload
+again on the next boot: a freeze/reboot loop.
 
 **The cap.** `hard_max_powered_on` (the auto-start cap) is the maximum number of PLCs auto-start will
 power on. Set it to the number this machine can run at once; the default is **1**. It applies only to
 auto-start — the manual limit `max_powered_on` can be higher for testing and does not change what
 happens at the next boot. Both are editable in the UI; raising the cap asks for confirmation.
 
-**The loop-breaker.** If a setup still does not stabilize, a counter is bumped before each auto-start and
-cleared only after the service passes repeated `/health` probes (so a soft freeze — processes alive but
-the machine unresponsive — does not count as a clean boot). After `boot_fail_limit` non-stabilizing
-boots, the service enters **SAFE MODE**: auto-start is skipped, a red banner shows in the UI, and a
-*Re-enable* button clears it once you have fixed the load.
+**The loop-breaker.** A backstop in case the cap is set too high. After each auto-start, the tool checks
+whether the machine actually came up healthy — not just that the PLCs report as *on*, but that the web
+interface keeps answering normally for a while, since a frozen machine can still look alive. If several
+boots in a row fail that check, the tool stops auto-starting and shows a red **SAFE MODE** banner in the
+web interface, with a *Re-enable* button to use once you have reduced the load.
 
 Every value is tunable in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
