@@ -27,9 +27,9 @@ autostart_instance =
 # ---- Power-on limit ----
 # Operational limit (also editable from the web UI).
 max_powered_on = 1
-# HARD safety cap = real capacity of this machine. Editable on disk ONLY; the web UI never exceeds it.
-# Set this to how many PLCs your machine can run without freezing.
-hard_max_powered_on = 4
+# Auto-start safety cap (disk-only): the MAX number of PLCs auto-start brings up at boot.
+# Default 1. Raise it to how many PLCs the machine can run unattended without freezing.
+hard_max_powered_on = 1
 
 # ---- Boot protections (loop-breaker) ----
 # Consecutive boots that never stabilize before the service enters SAFE MODE and skips auto-start.

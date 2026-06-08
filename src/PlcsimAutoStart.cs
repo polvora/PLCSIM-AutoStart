@@ -223,7 +223,7 @@ internal sealed class Config
     public string AutostartMode = "last";   // last = restore the set last powered on | fixed = use AutostartInstance
     public string AutostartInstance = "";
     public int MaxPoweredOn = 1;             // OPERATIONAL limit, editable from the web UI
-    public int HardMaxPoweredOn = 4;         // HARD safety cap (disk-only); the web UI can never exceed it
+    public int HardMaxPoweredOn = 1;         // auto-start safety cap (disk-only): max instances auto-start brings up at boot
     public int BootFailLimit = 2;            // consecutive non-stabilizing boots before entering SAFE MODE
     public int StableSeconds = 90;           // stability window after auto-start to declare a "clean boot"
     public int StartStaggerMs = 4000;        // pause between power-ons during staggered auto-start
