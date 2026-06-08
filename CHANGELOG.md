@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Maintenance mode**: a UI button that releases the PLCSIM connection without stopping the service, so
+  the official PLCSIM Advanced control panel / TIA Portal can connect (e.g. to add a new instance). PLCs
+  that are powered on keep running; a banner and a **Resume** button reconnect when you're done.
+
 ## [1.0.0] - 2026-06-03
 
 First public release.

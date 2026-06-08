@@ -404,6 +404,11 @@ internal sealed class PlcManager
     public volatile bool SafeMode = false;
     public string SafeModeReason = "";
 
+    // Maintenance mode: the user explicitly released our connection to PLCSIM so the official
+    // control panel / TIA Portal can connect (they can't while we hold the local runtime).
+    // While ON, we touch no API; running PLCs keep running in the runtime service.
+    public volatile bool Maintenance = false;
+
     public PlcManager(Config cfg) { _cfg = cfg; }
 
     public bool WaitForRuntime(int seconds)
@@ -419,7 +424,34 @@ internal sealed class PlcManager
 
     public bool RuntimeAvailable()
     {
+        if (Maintenance) return false;   // don't reconnect to the runtime while the GUI/TIA has it
         try { return SimulationRuntimeManager.Version != 0; } catch { return false; }
+    }
+
+    // ----- maintenance mode (release PLCSIM so the official GUI / TIA can connect) -----
+    public ActionResult EnterMaintenance()
+    {
+        lock (_gate)   // wait for any in-flight power op, then release
+        {
+            if (Maintenance) return ActionResult.Good("Already in maintenance mode.");
+            Maintenance = true;
+            try { SimulationRuntimeManager.Shutdown(); Log.Write("MAINTENANCE ON: released the PLCSIM API connection (Shutdown). The official control panel / TIA Portal can connect now; powered-on PLCs keep running."); }
+            catch (Exception ex) { Log.Write("WARN maintenance Shutdown: " + ex.Message); }
+        }
+        return ActionResult.Good("Maintenance mode ON — PLCSIM released. Open the official control panel / TIA now; PLCs that were on keep running. Click Resume when you are done.");
+    }
+
+    public ActionResult ExitMaintenance()
+    {
+        lock (_gate)
+        {
+            if (!Maintenance) return ActionResult.Good("Not in maintenance mode.");
+            Maintenance = false;
+            // Reconnect lazily and reassert our global network config.
+            try { if (WaitForRuntime(10)) { ApplyGlobalNetwork(); Log.Write("MAINTENANCE OFF: reconnected to the PLCSIM runtime."); } else Log.Write("MAINTENANCE OFF: runtime not reachable yet; will retry on next access."); }
+            catch (Exception ex) { Log.Write("WARN maintenance resume: " + ex.Message); }
+        }
+        return ActionResult.Good("Maintenance mode OFF — reconnected to PLCSIM.");
     }
 
     // ----- discovery -----
@@ -917,6 +949,19 @@ internal sealed class WebServer
         Dictionary<string, object> body = ReadJsonBody(ctx);
         Func<string> Name = () => (body != null && body.ContainsKey("name")) ? Convert.ToString(body["name"]) : q["name"];
 
+        // While maintenance mode has released the runtime, refuse anything that would touch PLCSIM
+        // (and silently reconnect). Reads that hit the runtime already return empty via RuntimeAvailable().
+        if (_plc.Maintenance)
+        {
+            switch (ep)
+            {
+                case "start": case "poweron": case "run": case "stop":
+                case "poweroff": case "setip": case "network":
+                    WriteResult(ctx, ActionResult.Bad("Maintenance mode is ON — click Resume before controlling PLCs."));
+                    return;
+            }
+        }
+
         switch (ep)
         {
             case "status":
@@ -932,6 +977,7 @@ internal sealed class WebServer
                     { "hardMaxPoweredOn", _cfg.HardMaxPoweredOn },
                     { "safeMode", _plc.SafeMode },
                     { "safeModeReason", _plc.SafeModeReason },
+                    { "maintenance", _plc.Maintenance },
                     { "network", new Dictionary<string,object> { { "mode", _cfg.NetworkMode }, { "adapterIndex", _cfg.AdapterIndex }, { "adapterName", _cfg.AdapterName } } },
                     { "autostart", new Dictionary<string,object> { { "enabled", _cfg.AutostartEnabled }, { "mode", _cfg.AutostartMode }, { "instance", _cfg.AutostartInstance }, { "last", _cfg.LastRunning } } },
                 });
@@ -1000,6 +1046,12 @@ internal sealed class WebServer
                     BootGuard.WriteAttempts(_exeDir, 0);
                     _plc.SafeMode = false; _plc.SafeModeReason = "";
                     WriteResult(ctx, ActionResult.Good("Auto-start re-enabled: boot-attempt counter reset."));
+                    return;
+                }
+            case "maintenance":
+                {
+                    bool on = body != null && body.ContainsKey("enabled") && Convert.ToBoolean(body["enabled"]);
+                    WriteResult(ctx, on ? _plc.EnterMaintenance() : _plc.ExitMaintenance());
                     return;
                 }
             case "network":

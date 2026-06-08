@@ -46,6 +46,12 @@ Start-Service "PLCSIM AutoStart"           # or: Start-ScheduledTask -TaskName "
 Repeated boots never stabilized, so the loop-breaker skipped auto-start on purpose. If it's overloaded,
 lower the **auto-start cap** (`hard_max_powered_on`), then click **Re-enable auto-start**.
 
+## Official control panel / TIA says "no connection to PLCSIM Advanced"
+The service holds a live connection to the PLCSIM runtime, and the official tools can't connect at the
+same time. Don't stop the service — click **Enter maintenance mode** in the UI. It releases PLCSIM (PLCs
+that are powered on keep running) so the control panel / TIA can connect, e.g. to **add a new instance**.
+Click **Resume** when you're done to reconnect.
+
 ## A second PLC won't power on
 The limiter. Raise **Max powered on** in the UI (it can't exceed `hard_max_powered_on`) or power one off.
 

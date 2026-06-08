@@ -32,6 +32,9 @@ Beyond remote control and auto-start:
   up at boot — the freeze protection for unattended reboots.
 - **Per-PLC IP override**, re-applied on every power-on, so a PLC stays reachable on your subnet.
 - **Network mode**: Softbus (zero-config) or TCP/IP mapped to a host adapter.
+- **Maintenance mode** — a one-click release of the PLCSIM connection so the official control panel /
+  TIA Portal can connect (e.g. to add a new instance) without stopping the service. Powered-on PLCs keep
+  running; one click resumes.
 - **Installs as a Windows Service** you Start/Stop from `services.msc` / Task Manager. (Because PLCSIM
   needs an interactive session, the service is a launcher that runs the app in the logged-in session;
   `-AsTask` uses a Scheduled Task instead. See [docs/INSTALL.md](docs/INSTALL.md#how-the-service-works-the-session-0-catch).)

@@ -78,6 +78,16 @@
     </div>
   </div>
 
+  <div id="maintbanner" style="display:none;background:#13314d;border:1px solid #2a6cad;border-radius:12px;padding:16px 20px">
+    <div class="row sp">
+      <div>
+        <div style="font-weight:700;color:#6db1ff;font-size:15px">🔧 Maintenance mode — PLCSIM released</div>
+        <div class="note" style="color:#cfe3ff;margin-top:6px">The official PLCSIM Advanced control panel / TIA Portal can connect now. PLCs that were powered on keep running. PLC control here is paused — click <b>Resume</b> when you are done.</div>
+      </div>
+      <button class="primary" id="maintResume">Resume</button>
+    </div>
+  </div>
+
   <div class="card">
     <div class="row sp">
       <h2 style="margin:0">Workspace</h2>
@@ -143,6 +153,14 @@
   </div>
 
   <div class="card">
+    <h2>Maintenance</h2>
+    <div class="note">This service keeps a live connection to PLCSIM, so the <b>official control panel / TIA Portal can't connect</b> while it runs (the panel shows "no connection to PLCSIM Advanced"). To open them — e.g. to <b>add a new instance</b> — enter maintenance mode: it releases PLCSIM <b>without stopping this service</b>. PLCs that are powered on keep running.</div>
+    <div class="row" style="margin-top:12px">
+      <button id="maintEnter">🔧 Enter maintenance mode (to open the official GUI)</button>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="note warn">⚠️ No authentication — intended for <b>trusted, closed networks</b> (the typical PLCSIM lab/VM setup). Anyone who can reach this page can power PLCs on/off. Don't place it on an untrusted network or expose it to the internet.</div>
   </div>
 </main>
@@ -204,6 +222,7 @@ function renderRows(){
   const onList = S.poweredOnList||[];
   const max = S.maxPoweredOn||1;
   const atLimit = onList.length >= max;
+  const maint = !!S.maintenance;   // PLC control is paused while the runtime is released
   for(const it of S.instances){
     const tr=document.createElement('tr');
     // Blocked only if this PLC is off and the power-on limit is already reached.
@@ -213,10 +232,10 @@ function renderRows(){
       <td><div class="name">${it.name}</div><div class="sub">${it.plcName||''}${it.ip?` · IP ${it.ip}`:''}${it.configured?'':' · not configured'}</div></td>
       <td>${badge(it.state)}${active?' <span class="sub">◀ active</span>':''}</td>
       <td><div class="actions">
-        <button class="primary" data-a="start" data-n="${it.name}" ${blocked?`disabled title="Limit of ${max} powered on reached; power one off first"`:''}>${it.running?'Restart':'Power on + RUN'}</button>
-        <button data-a="stop" data-n="${it.name}" ${it.running?'':'disabled'}>STOP</button>
-        <button class="danger" data-a="poweroff" data-n="${it.name}" ${it.poweredOn?'':'disabled'}>Power off</button>
-        <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${it.poweredOn?'':'disabled title="Power on the PLC first"'}>IP…</button>
+        <button class="primary" data-a="start" data-n="${it.name}" ${(blocked||maint)?'disabled':''} ${(blocked&&!maint)?`title="Limit of ${max} powered on reached; power one off first"`:''}>${it.running?'Restart':'Power on + RUN'}</button>
+        <button data-a="stop" data-n="${it.name}" ${(it.running&&!maint)?'':'disabled'}>STOP</button>
+        <button class="danger" data-a="poweroff" data-n="${it.name}" ${(it.poweredOn&&!maint)?'':'disabled'}>Power off</button>
+        <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${(it.poweredOn&&!maint)?'':'disabled'}>IP…</button>
       </div></td>`;
     tb.appendChild(tr);
   }
@@ -227,9 +246,10 @@ function renderRows(){
 }
 
 function renderControls(){
+  const maint = !!S.maintenance;
   // header pills
-  $('#rt').textContent = S.runtime?'runtime OK':'runtime OFF';
-  $('#rt').className = 'pill '+(S.runtime?'ok':'bad');
+  $('#rt').textContent = maint ? 'maintenance' : (S.runtime?'runtime OK':'runtime OFF');
+  $('#rt').className = 'pill '+(maint ? '' : (S.runtime?'ok':'bad'));
   $('#net').textContent = S.network.mode + (S.network.adapterName? ' · '+S.network.adapterName : '');
   const onList = S.poweredOnList||[], max = S.maxPoweredOn||1, hard = S.hardMaxPoweredOn||max;
   $('#onpill').textContent = 'Powered on: '+onList.length+'/'+max;
@@ -239,6 +259,11 @@ function renderControls(){
   const sb=$('#safebanner');
   if(S.safeMode){ sb.style.display=''; $('#safeReason').textContent = S.safeModeReason||'Auto-start disabled.'; }
   else sb.style.display='none';
+
+  // maintenance banner + control
+  $('#maintbanner').style.display = maint ? '' : 'none';
+  $('#maintEnter').disabled = maint;
+  $('#netSave').disabled = maint;
 
   // limit (the web UI never exceeds the hard safety cap)
   const mo=$('#maxOn'); if(document.activeElement!==mo) mo.value = max;
@@ -306,6 +331,14 @@ $('#hardConfirm').onclick = async () => {
 };
 
 $('#safeClear').onclick = async () => { const r=await api('clear-safemode',{}); toast(r.message,r.ok); await load(); };
+
+// maintenance mode: explicitly release PLCSIM so the official control panel / TIA can connect
+$('#maintEnter').onclick = async () => {
+  if(!confirm('Enter maintenance mode?\n\nThis releases PLCSIM so the official control panel / TIA Portal can connect (e.g. to add a new instance). PLCs that are powered on keep running, but PLC control here is paused until you click Resume.')) return;
+  const r=await api('maintenance',{enabled:true}); toast(r.message,r.ok); await load();
+};
+$('#maintResume').onclick = async () => { const r=await api('maintenance',{enabled:false}); toast(r.message,r.ok); await load(); };
+
 $('#netMode').onchange = () => { netDirty=true; $('#adapterWrap').style.display = ($('#netMode').value==='TCPIPMultipleAdapter') ? 'inline-flex' : 'none'; };
 $('#netAdapter').onchange = () => { netDirty=true; };
 $('#netSave').onclick = async () => {
