@@ -111,7 +111,12 @@
       <select id="asInstance"></select>
     </div>
     <div class="note" id="asNote" style="margin-top:8px"></div>
-    <div class="note warn" id="hardNote" style="margin-top:10px"></div>
+    <div class="row" style="margin-top:12px">
+      <label class="sub">🛡️ Auto-start cap (max PLCs powered on at boot):</label>
+      <input id="hardOn" type="number" min="1" max="20" style="width:60px">
+      <button id="hardSave">Apply</button>
+    </div>
+    <div class="note warn" id="hardNote" style="margin-top:6px"></div>
     <div class="row" style="margin-top:10px">
       <label class="toggle"><input type="checkbox" id="suppressNext"><span></span></label>
       <span class="sub">Suppress auto-start on the <b>next boot</b> (manual safe mode — use it before a forced restart)</span>
@@ -235,7 +240,8 @@ function renderControls(){
   $('#asNote').innerHTML = (mode==='fixed')
     ? 'At server startup it will always start the selected fixed instance.'
     : ('At server startup it will restore <b>whatever was powered on</b> last time'+(last.length?': <b>'+last.join(', ')+'</b>':' (right now: none)')+'.');
-  $('#hardNote').innerHTML = `🛡️ Auto-start safety cap: <b>${hard} PLCs</b> (set on disk, not editable here). On an unattended reboot, auto-start brings up <b>at most ${hard}</b> — that's the freeze protection. The operational limit above is <b>not</b> capped by it, so you can raise it to test how many your machine really handles (if it freezes, the next reboot still respects the safety cap).`;
+  const ho=$('#hardOn'); if(document.activeElement!==ho) ho.value = hard;
+  $('#hardNote').innerHTML = `⚠️ This caps how many PLCs <b>auto-start</b> powers on after a reboot. Auto-start runs with <b>nobody watching</b>: if it brings up more than this machine can handle, the VM can <b>freeze</b> — and because it retries every boot, you'd get a freeze/restart loop (the built-in loop-breaker eventually stops it, but it's disruptive). Keep it at a number this machine can definitely run <b>unattended</b>. Your manual power-on limit above is separate and <b>not</b> capped by this.`;
   if(document.activeElement!==$('#suppressNext')) $('#suppressNext').checked = !!S.suppressNextBoot;
 
   // network
@@ -266,6 +272,11 @@ $('#asEnabled').onchange = saveAutostart;
 $('#asInstance').onchange = saveAutostart;
 $('#asMode').onchange = () => { $('#asInstance').style.display = ($('#asMode').value==='fixed')?'':'none'; saveAutostart(); };
 $('#maxSave').onclick = async () => { const r=await api('limit',{max:Number($('#maxOn').value)||1}); toast(r.message,r.ok); await load(); };
+$('#hardSave').onclick = async () => {
+  const v = Number($('#hardOn').value)||1, cur = S.hardMaxPoweredOn||1;
+  if (v > cur && !confirm(`Raise the auto-start cap to ${v}?\n\nAfter every reboot, auto-start will try to power on up to ${v} PLCs with nobody watching. If that's more than this machine can run unattended, it can freeze on boot. Continue?`)) { $('#hardOn').value = cur; return; }
+  const r = await api('autostart-cap', {max: v}); toast(r.message, r.ok); await load();
+};
 $('#safeClear').onclick = async () => { const r=await api('clear-safemode',{}); toast(r.message,r.ok); await load(); };
 $('#suppressNext').onchange = async e => { const r=await api('safemode',{enabled:e.target.checked}); toast(r.message,r.ok); await load(); };
 $('#netMode').onchange = () => { $('#adapterWrap').style.display = ($('#netMode').value==='TCPIPMultipleAdapter') ? 'inline-flex' : 'none'; };

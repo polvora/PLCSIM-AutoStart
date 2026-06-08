@@ -14,8 +14,8 @@ First public release.
   the last shutdown) and `fixed` (always start one chosen instance).
 - **Persistent by default**: instances are registered against PLCSIM's native persistent storage, so a
   PLC's downloaded program survives restarts.
-- Configurable **power-on limit** with a separate, disk-only **hard safety cap** that the
-  web UI can never exceed (protects machines that can only run a few instances at once).
+- Configurable **power-on limit** plus a separate **auto-start safety cap** (editable in the UI,
+  with a warning) that bounds how many PLCs auto-start brings up at boot.
 - **Boot protections** against a freeze/restart loop:
   - boot-attempt counter that enters SAFE MODE after N non-stabilizing boots,
   - a "clean boot" check gated on repeated self `/health` probes (detects a soft freeze where

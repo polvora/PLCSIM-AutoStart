@@ -10,7 +10,7 @@
 //   * Web UI listing the PLCs of a PLCSIM workspace (Documents\PLCSIM\<workspace>).
 //   * Power on / Run / Stop / Power off from the browser.
 //   * Configurable LIMIT of how many instances may be powered on at once (default 1), with a
-//     separate disk-only HARD safety cap that the web UI can never exceed.
+//     separate auto-start safety cap (editable in the UI, with a warning) for how many auto-start brings up at boot.
 //   * Per-instance auto-start at boot. Mode "last" restores whatever was running before the
 //     last shutdown; mode "fixed" always starts one chosen instance.
 //   * Boot protections against a freeze/restart loop: a boot-attempt counter that only resets
@@ -223,7 +223,7 @@ internal sealed class Config
     public string AutostartMode = "last";   // last = restore the set last powered on | fixed = use AutostartInstance
     public string AutostartInstance = "";
     public int MaxPoweredOn = 1;             // OPERATIONAL limit, editable from the web UI
-    public int HardMaxPoweredOn = 1;         // auto-start safety cap (disk-only): max instances auto-start brings up at boot
+    public int HardMaxPoweredOn = 1;         // auto-start safety cap (editable in UI w/ warning): max instances auto-start brings up at boot
     public int BootFailLimit = 2;            // consecutive non-stabilizing boots before entering SAFE MODE
     public int StableSeconds = 90;           // stability window after auto-start to declare a "clean boot"
     public int StartStaggerMs = 4000;        // pause between power-ons during staggered auto-start
@@ -1008,6 +1008,16 @@ internal sealed class WebServer
                     string msg = "operational power-on limit = " + newMax;
                     if (newMax > _cfg.HardMaxPoweredOn) msg += " (above the autostart safety cap " + _cfg.HardMaxPoweredOn + " - fine for manual testing; auto-start still restores at most " + _cfg.HardMaxPoweredOn + ")";
                     WriteResult(ctx, ActionResult.Good(msg));
+                    return;
+                }
+            case "autostart-cap":
+                {
+                    int newHard = _cfg.HardMaxPoweredOn;
+                    if (body != null && body.ContainsKey("max")) { try { newHard = Convert.ToInt32(body["max"]); } catch { } }
+                    else if (!string.IsNullOrEmpty(q["max"])) int.TryParse(q["max"], out newHard);
+                    if (newHard < 1) newHard = 1;
+                    _cfg.HardMaxPoweredOn = newHard; _cfg.Save();
+                    WriteResult(ctx, ActionResult.Good("Auto-start cap = " + newHard + " (auto-start brings up at most " + newHard + " PLC" + (newHard == 1 ? "" : "s") + " after a reboot)"));
                     return;
                 }
             case "safemode":

@@ -9,10 +9,10 @@ replace it. You still create and configure your virtual PLCs in the Siemens PLCS
 usual; PLCSIM Auto-Start reads that workspace and adds what the GUI doesn't give you:
 
 - 🔄 **Automatic startup** — your PLCs come back up on their own after a server reboot, completely
-  unattended. This is the headline: the Siemens GUI has no way to do it.
+  unattended. This is the headline feature.
 - 🌐 **Remote control from a browser** — power on, RUN, STOP and power off your PLCs from any machine
-  on the network. Drive a simulation host from your own desktop or another VM, with no Siemens GUI and
-  no remote-desktop session required.
+  on the network. Manage a headless simulation host from your own desktop or another VM, with no
+  remote-desktop session needed.
 - 💾 **Persistent by default** — every instance is registered against PLCSIM's persistent storage, so a
   PLC's downloaded program survives a restart. Combined with auto-start, a PLC comes back on its own
   after a reboot — nothing to re-open, nothing to re-download from TIA.
@@ -27,8 +27,9 @@ usual; PLCSIM Auto-Start reads that workspace and adds what the GUI doesn't give
 
 Beyond remote control and auto-start:
 
-- **Power-on limit** (default **1**, freely adjustable in the UI to test capacity) plus a disk-only
-  **hard cap** that bounds the **auto-start** count — the freeze protection for unattended reboots.
+- **Power-on limit** (default **1**, freely adjustable in the UI to test capacity) plus an
+  **auto-start cap** (editable in the UI, with a warning) that bounds how many PLCs auto-start brings
+  up at boot — the freeze protection for unattended reboots.
 - **Per-PLC IP override**, re-applied on every power-on, so a PLC stays reachable on your subnet.
 - **Network mode**: Softbus (zero-config) or TCP/IP mapped to a host adapter.
 - **Installs as a Windows Service** you Start/Stop from `services.msc` / Task Manager. (Because PLCSIM
@@ -85,7 +86,7 @@ the background; you normally never see them.
 
 **Power-on limit + hard cap.** `max_powered_on` (UI-editable) is the operational limit for *manual*
 power-ons — it is **not** capped by the hard cap, so you can raise it to discover how many PLCs your
-machine really handles. `hard_max_powered_on` (disk-only) limits only the **auto-start** count: after
+machine really handles. `hard_max_powered_on` (editable in the UI, with a warning) limits only the **auto-start** count: after
 an unattended reboot, auto-start restores at most that many — so even if a manual test froze the box,
 the next boot stays within the safe number.
 
