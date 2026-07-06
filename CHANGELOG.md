@@ -11,8 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   that are powered on keep running; a banner and a **Resume** button reconnect when you're done.
 - **Wipe CPU**: a per-instance button that clears the saved program and hardware config so the instance
   comes back as a blank (unspecified) CPU — for loading a project with a *different* CPU from TIA Portal.
-  It powers the instance off, archives a backup of the current program first, then clears its storage and
-  unregisters it. The instance's CPU type is now shown in the list.
+  It powers the instance off, permanently clears its storage (no backup), and unregisters it. The
+  instance's CPU type is now shown in the list.
 
 ## [1.0.0] - 2026-06-03
 

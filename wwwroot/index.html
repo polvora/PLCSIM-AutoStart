@@ -34,7 +34,8 @@
   .b-Off{background:#222b36;color:var(--off)}
   .b-Booting,.b-Startup,.b-ShuttingDown{background:#13314d;color:#6db1ff}
   .name{font-weight:600}.sub{font-size:12px;color:var(--mut)}
-  .actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+  .actions{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+  .actrow{display:flex;gap:6px;justify-content:flex-end}
   .toggle{position:relative;width:46px;height:26px}
   .toggle input{display:none}
   .toggle span{position:absolute;inset:0;background:#33404f;border-radius:999px;transition:.2s}
@@ -189,13 +190,13 @@
 
 <div id="wipeBg">
   <div class="modal">
-    <h3>🧹 Wipe CPU — <span id="wipeName"></span></h3>
+    <h3>Wipe CPU — <span id="wipeName"></span></h3>
     <p>This clears the program and hardware configuration saved for this instance, so it comes back as a
     <b>blank (unspecified) CPU</b>. Use it to load a project with a <b>different CPU</b> from TIA Portal.</p>
     <div class="danger-box">
-      The instance is <b>powered off</b> first, and a <b>backup</b> of the current program is archived
-      (recoverable). The saved IP is cleared. After this, download your project from TIA — it can be a
-      different CPU. This does not delete the instance; it only empties its stored program.
+      The instance is <b>powered off</b> and its stored program is <b>permanently cleared</b> — no backup
+      is kept. The saved IP is cleared too. After this, download your project from TIA; it can be a
+      different CPU. This does not delete the instance, only empties its stored program.
     </div>
     <div class="mrow">
       <button id="wipeCancel">Cancel</button>
@@ -254,11 +255,15 @@ function renderRows(){
       <td><div class="name">${it.name}</div><div class="sub">${it.plcName||''}${it.ip?` · IP ${it.ip}`:''}${it.cpuType?` · ${cpuLabel(it.cpuType)}`:''}${it.configured?'':' · not configured'}</div></td>
       <td>${badge(it.state)}${active?' <span class="sub">◀ active</span>':''}</td>
       <td><div class="actions">
-        <button class="primary" data-a="start" data-n="${it.name}" ${startDisabled?'disabled':''} ${startTitle}>Power on + RUN</button>
-        <button data-a="stop" data-n="${it.name}" ${(it.running&&!maint)?'':'disabled'}>STOP</button>
-        <button class="danger" data-a="poweroff" data-n="${it.name}" ${(it.poweredOn&&!maint)?'':'disabled'}>Power off</button>
-        <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${(it.poweredOn&&!maint)?'':'disabled'}>IP…</button>
-        <button data-w="${it.name}" ${maint?'disabled':''} title="Clear the saved program so TIA can load a different CPU">🧹 Wipe CPU</button>
+        <div class="actrow">
+          <button class="primary" data-a="start" data-n="${it.name}" ${startDisabled?'disabled':''} ${startTitle}>Power on + RUN</button>
+          <button data-a="stop" data-n="${it.name}" ${(it.running&&!maint)?'':'disabled'}>STOP</button>
+          <button class="danger" data-a="poweroff" data-n="${it.name}" ${(it.poweredOn&&!maint)?'':'disabled'}>Power off</button>
+        </div>
+        <div class="actrow">
+          <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${(it.poweredOn&&!maint)?'':'disabled'}>IP…</button>
+          <button data-w="${it.name}" ${maint?'disabled':''} title="Clear the saved program so TIA can load a different CPU">Wipe CPU</button>
+        </div>
       </div></td>`;
     tb.appendChild(tr);
   }

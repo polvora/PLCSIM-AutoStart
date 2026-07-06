@@ -846,9 +846,9 @@ internal sealed class PlcManager
     }
 
     // Wipes the stored program + hardware config so the instance comes back as a BLANK (unspecified) CPU,
-    // which lets TIA Portal download a project with a different CPU. Powers the instance off first and
-    // archives a backup of the current program (recoverable with RetrieveStorage). Destructive.
-    public ActionResult WipeCpu(string name, string exeDir)
+    // which lets TIA Portal download a project with a different CPU. Powers the instance off first.
+    // Destructive and permanent: nothing is kept.
+    public ActionResult WipeCpu(string name)
     {
         lock (_gate)
         {
@@ -873,23 +873,10 @@ internal sealed class PlcManager
                     WaitStable(inst, _cfg.PowerOnTimeout);
                 }
 
-                // Back up the current program before wiping (best effort; the user is replacing it anyway).
-                bool backedUp = false; string archive = "";
-                try
-                {
-                    string dir = Path.Combine(exeDir, "wiped-backups");
-                    Directory.CreateDirectory(dir);
-                    archive = Path.Combine(dir, name + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".zip");
-                    inst.ArchiveStorage(archive);
-                    backedUp = true;
-                    Log.Write("Wipe '" + name + "': archived current program (" + oldCpu + ") -> " + archive);
-                }
-                catch (Exception ex) { Log.Write("Wipe '" + name + "': WARN backup failed: " + ex.Message); }
-
-                // Wipe the persistent storage -> blank / unspecified CPU.
+                // Permanently clear the stored program -> blank / unspecified CPU. No backup is kept.
                 inst.CleanupStoragePath();
                 string cpuNow = ""; try { cpuNow = inst.CPUType.ToString(); } catch { }
-                Log.Write("Wipe '" + name + "': CleanupStoragePath done; instance is now blank (" + cpuNow + ").");
+                Log.Write("Wipe '" + name + "': CleanupStoragePath done (" + oldCpu + " -> " + cpuNow + "); no backup kept.");
 
                 // Remove it from the runtime for a clean slate; it re-registers blank on the next power-on.
                 try { inst.UnregisterInstance(); Log.Write("Wipe '" + name + "': unregistered from the runtime."); }
@@ -900,9 +887,7 @@ internal sealed class PlcManager
                 _cfg.LastRunning.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
                 _cfg.Save();
 
-                string msg = "'" + name + "' wiped to a blank CPU" + (string.IsNullOrEmpty(cpuNow) ? "" : " (" + cpuNow + ")") + ". ";
-                msg += backedUp ? "A backup of the old program was saved to wiped-backups. " : "WARNING: backup failed — old program was NOT saved. ";
-                msg += "Now download your project from TIA Portal; it can be a different CPU.";
+                string msg = "'" + name + "' wiped to a blank CPU" + (string.IsNullOrEmpty(cpuNow) ? "" : " (" + cpuNow + ")") + ". Now download your project from TIA Portal; it can be a different CPU.";
                 return ActionResult.Good(msg);
             }
             catch (Exception ex) { Log.Write("Wipe ERROR '" + name + "': " + ex); return ActionResult.Bad(ex.Message); }
@@ -1064,7 +1049,7 @@ internal sealed class WebServer
                 }
             case "stop": WriteResult(ctx, _plc.Stop(Name())); return;
             case "poweroff": WriteResult(ctx, _plc.PowerOff(Name())); return;
-            case "wipe-cpu": WriteResult(ctx, _plc.WipeCpu(Name(), _exeDir)); return;
+            case "wipe-cpu": WriteResult(ctx, _plc.WipeCpu(Name())); return;
             case "select-workspace":
                 {
                     string ws = Name();

@@ -55,9 +55,9 @@ Click **Resume** when you're done to reconnect.
 ## Load a project with a different CPU (TIA rejects it)
 TIA only downloads to a PLCSIM instance whose CPU matches the project (or is unspecified). Because this
 tool keeps each instance's program in PLCSIM's persistent storage, the instance keeps its old CPU. Click
-**🧹 Wipe CPU** on that instance: it powers off, backs up the current program (to `wiped-backups`), and
-clears the stored program so the instance is a blank/unspecified CPU. Then download your project from
-TIA. If TIA can't connect while the service runs, enter **maintenance mode** for the download.
+**Wipe CPU** on that instance: it powers off and permanently clears the stored program (no backup) so the
+instance is a blank/unspecified CPU. Then download your project from TIA. If TIA can't connect while the
+service runs, enter **maintenance mode** for the download.
 
 ## A second PLC won't power on
 The limiter. Raise **Max powered on** in the UI (it can't exceed `hard_max_powered_on`) or power one off.
