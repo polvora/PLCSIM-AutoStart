@@ -261,7 +261,7 @@ function renderRows(){
           <button class="danger" data-a="poweroff" data-n="${it.name}" ${(it.poweredOn&&!maint)?'':'disabled'}>Power off</button>
         </div>
         <div class="actrow">
-          <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${(it.poweredOn&&!maint)?'':'disabled'}>IP…</button>
+          <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${(it.poweredOn&&!maint)?'':'disabled'}>Set IP…</button>
           <button data-w="${it.name}" ${maint?'disabled':''} title="Clear the saved program so TIA can load a different CPU">Wipe CPU</button>
         </div>
       </div></td>`;
