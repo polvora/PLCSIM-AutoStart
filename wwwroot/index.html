@@ -34,7 +34,7 @@
   .b-Off{background:#222b36;color:var(--off)}
   .b-Booting,.b-Startup,.b-ShuttingDown{background:#13314d;color:#6db1ff}
   .name{font-weight:600}.sub{font-size:12px;color:var(--mut)}
-  .actions{display:flex;gap:6px;justify-content:flex-end}
+  .actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
   .toggle{position:relative;width:46px;height:26px}
   .toggle input{display:none}
   .toggle span{position:absolute;inset:0;background:#33404f;border-radius:999px;transition:.2s}
@@ -47,8 +47,8 @@
   #toast.ok{border-color:#1c5}#toast.bad{border-color:#a33}
   .note{font-size:13px;color:var(--mut);margin-top:4px}
   .warn{color:var(--stop)}
-  #modalBg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
-  #modalBg.show{display:flex}
+  #modalBg,#wipeBg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+  #modalBg.show,#wipeBg.show{display:flex}
   .modal{background:var(--card);border:1px solid var(--bad);border-radius:12px;max-width:560px;width:92%;padding:22px 24px}
   .modal h3{margin:0 0 12px;color:#ffb4b4;font-size:17px}
   .modal p{font-size:14px;line-height:1.55;margin:0 0 12px}
@@ -187,6 +187,23 @@
   </div>
 </div>
 
+<div id="wipeBg">
+  <div class="modal">
+    <h3>🧹 Wipe CPU — <span id="wipeName"></span></h3>
+    <p>This clears the program and hardware configuration saved for this instance, so it comes back as a
+    <b>blank (unspecified) CPU</b>. Use it to load a project with a <b>different CPU</b> from TIA Portal.</p>
+    <div class="danger-box">
+      The instance is <b>powered off</b> first, and a <b>backup</b> of the current program is archived
+      (recoverable). The saved IP is cleared. After this, download your project from TIA — it can be a
+      different CPU. This does not delete the instance; it only empties its stored program.
+    </div>
+    <div class="mrow">
+      <button id="wipeCancel">Cancel</button>
+      <button class="danger" id="wipeConfirm">Wipe CPU</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 let S = null, busy = false, netDirty = false;
@@ -234,13 +251,14 @@ function renderRows(){
     const startTitle = (blocked && !maint) ? `title="Limit of ${max} powered on reached; power one off first"`
                      : (it.running ? `title="Already running — STOP it first to restart"` : '');
     tr.innerHTML = `
-      <td><div class="name">${it.name}</div><div class="sub">${it.plcName||''}${it.ip?` · IP ${it.ip}`:''}${it.configured?'':' · not configured'}</div></td>
+      <td><div class="name">${it.name}</div><div class="sub">${it.plcName||''}${it.ip?` · IP ${it.ip}`:''}${it.cpuType?` · ${cpuLabel(it.cpuType)}`:''}${it.configured?'':' · not configured'}</div></td>
       <td>${badge(it.state)}${active?' <span class="sub">◀ active</span>':''}</td>
       <td><div class="actions">
         <button class="primary" data-a="start" data-n="${it.name}" ${startDisabled?'disabled':''} ${startTitle}>Power on + RUN</button>
         <button data-a="stop" data-n="${it.name}" ${(it.running&&!maint)?'':'disabled'}>STOP</button>
         <button class="danger" data-a="poweroff" data-n="${it.name}" ${(it.poweredOn&&!maint)?'':'disabled'}>Power off</button>
         <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${(it.poweredOn&&!maint)?'':'disabled'}>IP…</button>
+        <button data-w="${it.name}" ${maint?'disabled':''} title="Clear the saved program so TIA can load a different CPU">🧹 Wipe CPU</button>
       </div></td>`;
     tb.appendChild(tr);
   }
@@ -248,7 +266,10 @@ function renderRows(){
     if(b.dataset.a==='setip') b.onclick=()=>changeIp(b.dataset.n, b.dataset.ip);
     else b.onclick=()=>act(b.dataset.a, b.dataset.n);
   });
+  tb.querySelectorAll('button[data-w]').forEach(b=>{ b.onclick=()=>openWipe(b.dataset.w); });
 }
+
+function cpuLabel(t){ return /Unspecified/i.test(t) ? 'unspecified (blank)' : t; }
 
 function renderControls(){
   const maint = !!S.maintenance;
@@ -333,6 +354,16 @@ $('#hardConfirm').onclick = async () => {
   const v = Number($('#hardModalInput').value)||1;
   $('#modalBg').classList.remove('show');
   const r = await api('autostart-cap', {max: v}); toast(r.message, r.ok); await load();
+};
+
+// wipe CPU: clear the saved program so TIA can load a different CPU (behind a confirmation)
+let wipeTarget = null;
+function openWipe(name){ wipeTarget = name; $('#wipeName').textContent = name; $('#wipeBg').classList.add('show'); }
+$('#wipeCancel').onclick = () => $('#wipeBg').classList.remove('show');
+$('#wipeBg').onclick = e => { if(e.target===$('#wipeBg')) $('#wipeBg').classList.remove('show'); };
+$('#wipeConfirm').onclick = async () => {
+  const name = wipeTarget; $('#wipeBg').classList.remove('show'); if(!name) return;
+  const r = await api('wipe-cpu', {name}); toast(r.message, r.ok); await load();
 };
 
 $('#safeClear').onclick = async () => { const r=await api('clear-safemode',{}); toast(r.message,r.ok); await load(); };

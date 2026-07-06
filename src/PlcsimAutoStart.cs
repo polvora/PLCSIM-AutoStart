@@ -483,6 +483,7 @@ internal sealed class PlcManager
             string name = def.Item1, plcName = def.Item2; bool configured = def.Item3;
             string state = live.ContainsKey(name) ? live[name][0] : "Off";
             string ip = live.ContainsKey(name) ? live[name][1] : "";
+            string cpu = live.ContainsKey(name) && live[name].Length > 2 ? live[name][2] : "";
             result.Add(new Dictionary<string, object> {
                 { "name", name },
                 { "plcName", plcName },
@@ -490,6 +491,7 @@ internal sealed class PlcManager
                 { "registered", live.ContainsKey(name) },
                 { "state", state },
                 { "ip", ip },
+                { "cpuType", cpu },
                 { "poweredOn", state != "Off" && state != "InvalidOperatingState" },
                 { "running", state == "Run" },
             });
@@ -500,6 +502,7 @@ internal sealed class PlcManager
                 result.Add(new Dictionary<string, object> {
                     { "name", kv.Key }, { "plcName", "(registered)" }, { "configured", false },
                     { "registered", true }, { "state", kv.Value[0] }, { "ip", kv.Value[1] },
+                    { "cpuType", kv.Value.Length > 2 ? kv.Value[2] : "" },
                     { "poweredOn", kv.Value[0] != "Off" }, { "running", kv.Value[0] == "Run" },
                 });
         return result;
@@ -520,11 +523,12 @@ internal sealed class PlcManager
         var mgr = SimulationRuntimeManager.LocalRuntimeManagerInstance;
         foreach (var info in SimulationRuntimeManager.RegisteredInstanceInfo)
         {
-            string state = "InvalidOperatingState", ip = "";
+            string state = "InvalidOperatingState", ip = "", cpu = "";
             try
             {
                 var inst = mgr.CreateInterface(info.Name);
                 state = inst.OperatingState.ToString();
+                try { cpu = inst.CPUType.ToString(); } catch { }
                 if (inst.OperatingState != EOperatingState.Off)
                 {
                     try { var ips = inst.ControllerIP; if (ips != null) ip = string.Join(", ", ips.Where(x => !string.IsNullOrEmpty(x) && x != "0.0.0.0")); }
@@ -532,7 +536,7 @@ internal sealed class PlcManager
                 }
             }
             catch { }
-            d[info.Name] = new[] { state, ip };
+            d[info.Name] = new[] { state, ip, cpu };
         }
         return d;
     }
@@ -841,6 +845,70 @@ internal sealed class PlcManager
         }
     }
 
+    // Wipes the stored program + hardware config so the instance comes back as a BLANK (unspecified) CPU,
+    // which lets TIA Portal download a project with a different CPU. Powers the instance off first and
+    // archives a backup of the current program (recoverable with RetrieveStorage). Destructive.
+    public ActionResult WipeCpu(string name, string exeDir)
+    {
+        lock (_gate)
+        {
+            if (!RuntimeAvailable()) return ActionResult.Bad("Runtime not available (exit maintenance mode first).");
+            if (string.IsNullOrWhiteSpace(name)) return ActionResult.Bad("No instance name.");
+            try
+            {
+                var mgr = SimulationRuntimeManager.LocalRuntimeManagerInstance;
+                bool reg = SimulationRuntimeManager.RegisteredInstanceInfo.Any(i => string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase));
+                // Only wipe a KNOWN instance (registered now, or defined in the workspace). Never create one.
+                bool known = reg || ReadWorkspacePlcs(_cfg.Workspace).Any(d => string.Equals(d.Item1, name, StringComparison.OrdinalIgnoreCase));
+                if (!known) return ActionResult.Bad("'" + name + "' is not a known instance.");
+                var inst = reg ? mgr.CreateInterface(name) : GetOrRegister(name);
+
+                string oldCpu = ""; try { oldCpu = inst.CPUType.ToString(); } catch { }
+
+                // Must be powered off to clean its storage.
+                if (inst.OperatingState != EOperatingState.Off)
+                {
+                    try { if (inst.OperatingState == EOperatingState.Run) inst.Stop(_cfg.RunTimeout); } catch { }
+                    inst.PowerOff(_cfg.PowerOnTimeout);
+                    WaitStable(inst, _cfg.PowerOnTimeout);
+                }
+
+                // Back up the current program before wiping (best effort; the user is replacing it anyway).
+                bool backedUp = false; string archive = "";
+                try
+                {
+                    string dir = Path.Combine(exeDir, "wiped-backups");
+                    Directory.CreateDirectory(dir);
+                    archive = Path.Combine(dir, name + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".zip");
+                    inst.ArchiveStorage(archive);
+                    backedUp = true;
+                    Log.Write("Wipe '" + name + "': archived current program (" + oldCpu + ") -> " + archive);
+                }
+                catch (Exception ex) { Log.Write("Wipe '" + name + "': WARN backup failed: " + ex.Message); }
+
+                // Wipe the persistent storage -> blank / unspecified CPU.
+                inst.CleanupStoragePath();
+                string cpuNow = ""; try { cpuNow = inst.CPUType.ToString(); } catch { }
+                Log.Write("Wipe '" + name + "': CleanupStoragePath done; instance is now blank (" + cpuNow + ").");
+
+                // Remove it from the runtime for a clean slate; it re-registers blank on the next power-on.
+                try { inst.UnregisterInstance(); Log.Write("Wipe '" + name + "': unregistered from the runtime."); }
+                catch (Exception ex) { Log.Write("Wipe '" + name + "': WARN unregister failed: " + ex.Message); }
+
+                // Forget the saved IP + last-running entry so nothing restores the old program.
+                _cfg.DesiredIp.Remove(name);
+                _cfg.LastRunning.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+                _cfg.Save();
+
+                string msg = "'" + name + "' wiped to a blank CPU" + (string.IsNullOrEmpty(cpuNow) ? "" : " (" + cpuNow + ")") + ". ";
+                msg += backedUp ? "A backup of the old program was saved to wiped-backups. " : "WARNING: backup failed — old program was NOT saved. ";
+                msg += "Now download your project from TIA Portal; it can be a different CPU.";
+                return ActionResult.Good(msg);
+            }
+            catch (Exception ex) { Log.Write("Wipe ERROR '" + name + "': " + ex); return ActionResult.Bad(ex.Message); }
+        }
+    }
+
     public ActionResult Run(string name) { return Op(name, i => i.Run(_cfg.RunTimeout), "RUN"); }
     public ActionResult Stop(string name) { return Op(name, i => i.Stop(_cfg.RunTimeout), "STOP"); }
 
@@ -996,6 +1064,7 @@ internal sealed class WebServer
                 }
             case "stop": WriteResult(ctx, _plc.Stop(Name())); return;
             case "poweroff": WriteResult(ctx, _plc.PowerOff(Name())); return;
+            case "wipe-cpu": WriteResult(ctx, _plc.WipeCpu(Name(), _exeDir)); return;
             case "select-workspace":
                 {
                     string ws = Name();
