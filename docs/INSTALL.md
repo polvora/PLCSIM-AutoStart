@@ -1,64 +1,67 @@
 # Installation
 
 ## Requirements
-- Windows 10 / Server 2016+ (x64)
-- Siemens **S7-PLCSIM Advanced** (tested with V20) — the installer finds its API DLL automatically
-- .NET Framework 4.x (already on modern Windows)
+- Windows 10 / Windows Server 2016 or newer (x64)
+- Siemens **S7-PLCSIM Advanced** (tested with V20). The installer finds its API DLL by itself.
+- .NET Framework 4.x (already part of Windows)
 
 ## Install
-1. Download the project — green **Code → Download ZIP** — which gives **`PLCSIM-AutoStart-main.zip`**
-   (the prebuilt `PlcsimAutoStart.exe` is inside). Extract it; you get a `PLCSIM-AutoStart-main` folder.
-2. **Double-click `Install.cmd`** and accept the UAC prompt. It finds the PLCSIM DLL, opens the LAN
-   port, creates `appconfig.txt`, and installs the **Windows Service "PLCSIM AutoStart"** (you can
-   Start/Stop it from `services.msc` / Task Manager). Add `-AsTask` to install a Scheduled Task instead.
+1. Download the project: green **Code → Download ZIP**. You get **`PLCSIM-AutoStart-main.zip`**, with the
+   ready-to-run `PlcsimAutoStart.exe` inside. Extract it.
+2. **Double-click `Install.cmd`** and accept the administrator prompt (UAC). It finds the PLCSIM DLL, opens
+   the port in the firewall, creates `appconfig.txt`, and installs the **Windows Service "PLCSIM
+   AutoStart"**, which you can start and stop from `services.msc`.
 
-   > Because it was downloaded from the internet, Windows may first show a security warning ("Windows
-   > protected your PC" / "Open File - Security Warning"). Choose **More info → Run anyway** — it's
-   > your own downloaded file.
+   > Because the file comes from the internet, Windows may first show a warning ("Windows protected your
+   > PC" or "Open File - Security Warning"). Choose **More info → Run anyway**.
 
-   Command-line alternative: from an elevated PowerShell, run `.\scripts\install.ps1` (add `-LocalOnly`
-   to bind to localhost).
-3. Open **http://localhost:8090** (or `http://<this-machine-ip>:8090` from another machine).
+   Instead of `Install.cmd` you can run `.\scripts\install.ps1` from an elevated PowerShell:
+   - `-LocalOnly`: the page is reachable only from this machine.
+   - `-AsTask`: install a Scheduled Task instead of the service.
+3. Open **http://localhost:8090**, or `http://<this-machine-ip>:8090` from another machine.
 
-Manage it (or use `services.msc` / Task Manager → Services):
+To manage it (or use `services.msc`):
 ```powershell
 Start-Service "PLCSIM AutoStart"
 Stop-Service  "PLCSIM AutoStart"
 Get-Content .\autostart.log -Tail 30 -Wait
 ```
 
-## How the service works (the session-0 catch)
-PLCSIM Advanced only does networking inside a **logged-in Windows session** — a user signed in to the
-desktop, not the hidden SYSTEM / session-0 context a normal service runs in (run there and networking
-fails with `-48 CommunicationInterfaceNotAvailable`).
+## How the service works
+PLCSIM Advanced only does networking inside the session of a **signed-in Windows user**. A normal service
+runs in the hidden SYSTEM session, where PLCSIM networking fails with `-48 CommunicationInterfaceNotAvailable`.
 
-So the installed service is a **launcher**: it runs as LocalSystem (so it shows up in `services.msc` and
-you can Start/Stop it), but on start it launches the actual web app inside the logged-in user's
-interactive session, with that user's elevated token — which is where PLCSIM works.
+So the service only **starts the app for you**. It runs as LocalSystem, so it appears in `services.msc` and
+you can start and stop it there. When it starts, it launches the web app in the session of the user signed
+in at the machine's console, with that user's administrator rights.
 
-The catch: there must be a logged-in session for it to launch into. For a server that must recover on
-its own after a reboot, enable auto-logon (below). The `-AsTask` option skips the service and runs the
-app directly from a Scheduled Task at logon instead.
+That means a user must be signed in **at the console**. A disconnected Remote Desktop session doesn't
+count: in that case the service waits and the page stays down (see
+[TROUBLESHOOTING](TROUBLESHOOTING.md#the-page-doesnt-open-after-restarting-the-service)). For a machine
+that must recover by itself after a reboot, turn on auto-logon (below).
+
+`-AsTask` doesn't use the service: a Scheduled Task starts the app when the user signs in.
 
 ## Unattended boot (auto-logon)
-PLCSIM only runs while a user is signed in, so for a server that must recover on its own after a
-reboot, enable auto-logon. **The installer offers this as a step** and asks for the account's password.
-To set it up later or on its own:
+PLCSIM only runs while a user is signed in, so a machine that must recover by itself after a reboot needs
+auto-logon. **The installer offers it** and asks for the account's password. To set it up later:
 ```powershell
 .\scripts\setup-autologon.ps1
 ```
-It logs the account in automatically at boot, which starts the service. It uses Sysinternals
-**Autologon** (encrypted password) if available, else the registry (plaintext — secured machines only).
-Read the warning at the top of the script first.
+At boot, Windows signs that account in by itself, and the service starts the app. The script uses
+Sysinternals **Autologon** (password stored encrypted) if it finds it. Otherwise it uses the registry, which
+stores the password **in plain text**, so use that only on a secured machine. Read the warning at the top of
+the script first.
 
-## LAN vs localhost
-LAN is the default (`http_prefix = http://+:8090/`, plus a URL reservation and firewall rule). For
-local-only access, install with `-LocalOnly`. No authentication — keep it on a trusted network.
+## Network or this machine only
+By default the page is reachable from the network (`http_prefix = http://+:8090/`, plus a URL reservation
+and a firewall rule). To make it reachable only from this machine, install with `-LocalOnly`. There is no
+login, so keep it on a trusted network.
 
 ## Uninstall
 ```powershell
 .\scripts\uninstall.ps1
 ```
-Removes the service (or task) and the firewall/URL rule; leaves your files, config, logs, and workspaces. If you set
-auto-logon, undo it via Sysinternals Autologon or by clearing `AutoAdminLogon` under
-`HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon`.
+It removes the service (or task), the firewall rule and the URL reservation. It leaves your files,
+settings, logs and workspaces. If you set up auto-logon, undo it with Sysinternals Autologon, or set
+`AutoAdminLogon` to `0` under `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon`.

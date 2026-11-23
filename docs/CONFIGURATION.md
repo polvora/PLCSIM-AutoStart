@@ -1,64 +1,66 @@
-# Configuration reference
+# Settings reference
 
-Settings live in `appconfig.txt` next to `PlcsimAutoStart.exe` (`key = value`; `#`/`;` = comment; blank =
-built-in default). The service rewrites this file when you change settings in the UI, so edit it by hand
-only while the service is **stopped**. Start from `appconfig.example.txt`.
+The settings are in `appconfig.txt`, next to `PlcsimAutoStart.exe`. Each line is `key = value`. Lines that
+start with `#` or `;` are comments. An empty value means "use the default".
+
+The tool rewrites this file when you change a setting on the page, so **edit it by hand only while the
+service is stopped**. `appconfig.example.txt` is a commented starting point.
 
 ## Web server
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `http_prefix` | `http://+:8090/` | Listen URL. `http://+:8090/` = all interfaces / LAN (the default; remote control is the main feature). Use `http://localhost:8090/` for local-only access. The installer reserves the URL (`netsh http add urlacl`) and opens the firewall when binding to the LAN. |
+| `http_prefix` | `http://+:8090/` | Address the page listens on. `http://+:8090/` = reachable from the network. `http://localhost:8090/` = only from this machine. When you install for the network, the installer reserves the address (`netsh http add urlacl`) and opens the port in the firewall. |
 
 ## Workspace
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `workspace_root` | `<Documents>\PLCSIM` | Folder containing your PLCSIM workspaces (of the account running the service). |
-| `workspace` | auto | Active workspace folder. Blank = auto-detect the most recently modified one. Also settable from the UI. |
+| `workspace_root` | `<Documents>\PLCSIM` | Folder that holds your PLCSIM workspaces, in the Documents of the account the app runs as. |
+| `workspace` | automatic | The workspace the page shows. Empty = the most recently changed one. You can also pick it on the page. |
 
-## Instance auto-start
-
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `autostart_enabled` | `false` | Whether any instance is powered on automatically at boot. |
-| `autostart_mode` | `last` | `last` = restore whatever was powered on before the last shutdown. `fixed` = always start `autostart_instance`. |
-| `autostart_instance` | (empty) | Instance name used when `autostart_mode = fixed`. |
-
-## Power-on limit
+## Auto-start at boot
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `max_powered_on` | `1` | The most PLCs you can power on by hand at once (editable in the UI). Not limited by the auto-start cap, so you can raise it to test how many your machine handles. |
-| `hard_max_powered_on` | `1` | The auto-start cap: the most PLCs auto-start turns on at boot. Set it to how many this machine can run at once. Editable in the UI (raising it asks you to confirm) or here. It only affects auto-start — the manual limit above can be higher. |
+| `autostart_enabled` | `false` | `true` = power on PLCs when the machine boots. |
+| `autostart_mode` | `last` | `last` = power on the PLCs that were on before the restart. `fixed` = always power on `autostart_instance`. |
+| `autostart_instance` | (empty) | The PLC to power on when `autostart_mode = fixed`. |
 
-## Boot protections
+## How many PLCs can be on
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `boot_fail_limit` | `2` | How many boots in a row can fail to come up working before the service stops auto-starting (SAFE MODE). Set to `1` to stop after a single bad boot. |
-| `stable_seconds` | `90` | How long after auto-start the machine must keep responding before the boot counts as good (the fail counter resets to 0). |
-| `start_stagger_ms` | `4000` | Pause between power-ons during auto-start, so they don't all start at the same time. |
-| `health_probe_interval_ms` | `15000` | How often, during the stability window, the tool checks that its own web page still responds. |
-| `health_timeout_ms` | `3000` | If a check takes longer than this, it counts as failed — the sign of a machine that looks alive but is frozen. |
-| `last_running` | (managed) | Internal: the last powered-on set, used by `autostart_mode = last`. Leave blank. |
+| `max_powered_on` | `1` | The most PLCs the page lets you power on at once (**Max. powered on at once** on the page). It can be higher than `hard_max_powered_on`. Only raise it if the machine can run that many PLCs at once. |
+| `hard_max_powered_on` | `1` | The **auto-start cap**: the most PLCs auto-start powers on at boot. Set it to the number of PLCs the machine can really run. You can change it on the page (it asks you to confirm). |
+
+## Boot protections (loop-breaker)
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `boot_fail_limit` | `2` | How many boots in a row can fail the check below before the tool skips auto-start (SAFE MODE). `1` = skip after one bad boot. |
+| `stable_seconds` | `90` | After auto-start, how long PLCSIM and the page must keep answering for the boot to count as good. A good boot sets the failed-boot counter back to 0. |
+| `start_stagger_ms` | `4000` | Pause between PLCs during auto-start, so they don't all start at the same moment. |
+| `health_probe_interval_ms` | `15000` | How often, during that time, the tool checks that its own page answers. |
+| `health_timeout_ms` | `3000` | A check that takes longer than this counts as failed. |
+| `last_running` | (managed) | Used by the tool: the PLCs that are on, for `autostart_mode = last`. Leave it alone. |
 
 ## Network
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `network_mode` | `Softbus` | `Softbus` = zero-config simulation bus (no adapter). `TCPIPSingleAdapter` = real Ethernet over the host's stack, no adapter selection. `TCPIPMultipleAdapter` = real Ethernet via the PLCSIM virtual switch bound to a chosen host adapter. |
-| `adapter_index` | `0` | Host adapter `ifIndex`. **Used only in `TCPIPMultipleAdapter` mode** (Softbus and Single Adapter ignore it). Pick it from the UI's adapter list, which only appears in that mode. |
-| `adapter_name` | (empty) | Friendly name of that adapter (informational; Multiple Adapter only). |
+| `network_mode` | `Softbus` | `Softbus` = PLCSIM's simulation network, no adapter needed. `TCPIPSingleAdapter` = TCP/IP through the machine's network, no adapter choice. `TCPIPMultipleAdapter` = TCP/IP through the PLCSIM virtual switch, on the adapter you choose. |
+| `adapter_index` | `0` | The adapter's `ifIndex`. **Only used in `TCPIPMultipleAdapter` mode.** Pick it on the page; the adapter list only appears in that mode. |
+| `adapter_name` | (empty) | That adapter's name, for display only. |
 
 ## Advanced
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `storage_layout` | `default` | `default` uses PLCSIM's native persistent storage (recommended; the downloaded program survives reboots). |
-| `poweron_timeout` | `60000` | Power-on timeout (ms). |
-| `run_timeout` | `60000` | RUN/STOP timeout (ms). |
-| `connect_wait_seconds` | `120` | How long to wait for the PLCSIM runtime manager at startup. |
-| `api_dll_path` | auto | Explicit path to `Siemens.Simatic.Simulation.Runtime.Api.x64.dll`. Blank = auto-detect the installed PLCSIM Advanced. Can also be set via the `PLCSIM_API_DLL` environment variable. |
-| `log` | `autostart.log` (next to the exe) | Log file path. |
-| `ip.<InstanceName>` | (none) | Saved IP override for a PLC, format `ip,mask,gateway`, re-applied on every power-on. Created when you set an IP from the UI. |
+| `storage_layout` | `default` | `default` = use PLCSIM's own saved storage, so each PLC keeps its program after a reboot. **+ New PLC** and **Delete** need this value. |
+| `poweron_timeout` | `60000` | How long to wait for a power-on or power-off (ms). |
+| `run_timeout` | `60000` | How long to wait for RUN or STOP (ms). |
+| `connect_wait_seconds` | `120` | At startup, how long to wait for PLCSIM to answer (s). |
+| `api_dll_path` | automatic | Full path of `Siemens.Simatic.Simulation.Runtime.Api.x64.dll`. Empty = find the installed PLCSIM Advanced. You can also set it with the `PLCSIM_API_DLL` environment variable. |
+| `log` | `autostart.log` next to the exe | Log file path. |
+| `ip.<PLC name>` | (none) | A PLC's saved IP, as `ip,mask,gateway`. **Set IP…** on the page creates it, and the tool sets that IP again every time the PLC is powered on. |

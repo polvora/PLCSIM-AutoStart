@@ -9,9 +9,10 @@
 // Features:
 //   * Web UI listing the PLCs of a PLCSIM workspace (Documents\PLCSIM\<workspace>).
 //   * Power on / Run / Stop / Power off from the browser.
-//   * Create blank CPUs in the workspace and delete powered-off ones.
-//   * Configurable LIMIT of how many instances may be powered on at once (default 1), with a
-//     separate auto-start safety cap (editable in the UI, with a warning) for how many auto-start brings up at boot.
+//   * Create blank PLCs in the workspace and delete powered-off ones.
+//   * A limit on how many PLCs the web page lets you power on at once (default 1), and a separate
+//     auto-start cap (editable in the UI, with a warning) on how many auto-start powers on at boot.
+//     The page limit may be set above the auto-start cap.
 //   * Per-instance auto-start at boot. Mode "last" restores whatever was running before the
 //     last shutdown; mode "fixed" always starts one chosen instance.
 //   * Boot protections against a freeze/restart loop: a boot-attempt counter that only resets
@@ -109,7 +110,7 @@ internal static class Program
                 if (attempts >= _cfg.BootFailLimit)
                 {
                     _plc.SafeMode = true;
-                    _plc.SafeModeReason = "Detected " + attempts + " boots that never stabilized (possible freeze loop). Auto-start was skipped. Check the load / safety cap, then re-enable.";
+                    _plc.SafeModeReason = "In the last " + attempts + " boots the machine did not stay responsive after auto-start, so auto-start was skipped this time to avoid a freeze-and-restart loop. If the machine can't run that many PLCs at once, lower the auto-start cap. Then click Re-enable auto-start.";
                     Log.Write("SAFE MODE (loop-breaker): " + attempts + " consecutive non-stabilizing boots (limit " + _cfg.BootFailLimit + "). Auto-start SKIPPED to break the loop.");
                 }
                 else
@@ -319,16 +320,17 @@ internal sealed class Config
     public void Save()
     {
         var sb = new StringBuilder();
-        sb.AppendLine("# PLCSIM-AutoStart config (auto-written; edit while the service is stopped).");
-        sb.AppendLine("# See docs/CONFIGURATION.md for the meaning of every key.");
+        sb.AppendLine("# PLCSIM-AutoStart settings. This tool rewrites this file when you change a setting on the web page,");
+        sb.AppendLine("# so edit it by hand only while the service is stopped. Every key is explained in docs/CONFIGURATION.md.");
         sb.AppendLine("http_prefix = " + HttpPrefix);
         sb.AppendLine("workspace_root = " + WorkspaceRoot);
         sb.AppendLine("workspace = " + Workspace);
         sb.AppendLine("autostart_enabled = " + (AutostartEnabled ? "true" : "false"));
         sb.AppendLine("autostart_mode = " + AutostartMode);
         sb.AppendLine("autostart_instance = " + AutostartInstance);
+        sb.AppendLine("# max_powered_on: the most PLCs the web page lets you power on at once. It can be higher than the auto-start cap.");
         sb.AppendLine("max_powered_on = " + MaxPoweredOn);
-        sb.AppendLine("# hard_max_powered_on: HARD safety cap = the real capacity of this machine. The web UI never exceeds it.");
+        sb.AppendLine("# hard_max_powered_on: the auto-start cap, the most PLCs auto-start powers on at boot.");
         sb.AppendLine("hard_max_powered_on = " + HardMaxPoweredOn);
         sb.AppendLine("boot_fail_limit = " + BootFailLimit);
         sb.AppendLine("stable_seconds = " + StableSeconds);
@@ -549,7 +551,7 @@ internal sealed class PlcManager
     public string SafeModeReason = "";
 
     // Maintenance mode: the user explicitly released our connection to PLCSIM so the official
-    // control panel / TIA Portal can connect (they can't while we hold the local runtime).
+    // PLCSIM control panel can connect (it can't while we hold the local runtime).
     // While ON, we touch no API.
     public volatile bool Maintenance = false;
 
@@ -588,7 +590,7 @@ internal sealed class PlcManager
             if (cache.TryGetValue(info.Name, out h) && h.Id == info.ID) return h.Iface;
             var inst = SimulationRuntimeManager.LocalRuntimeManagerInstance.CreateInterface(info.Name);
             Keep(cache, info.Name, info.ID, inst);
-            Log.Write("  API interface for '" + info.Name + "' (ID " + info.ID + ", " + (cache == _control ? "control" : "monitor") + ") created; kept for the life of the process");
+            Log.Write("  opened a PLCSIM connection to '" + info.Name + "' (ID " + info.ID + ", for " + (cache == _control ? "commands" : "status") + ")");
             return inst;
         }
     }
@@ -656,26 +658,54 @@ internal sealed class PlcManager
     {
         lock (_gate)   // wait for any in-flight power op, then release
         {
-            if (Maintenance) return ActionResult.Good("Already in maintenance mode.");
+            if (Maintenance) return ActionResult.Good("Maintenance mode is already on.");
             Maintenance = true;
-            try { SimulationRuntimeManager.Shutdown(); Log.Write("MAINTENANCE ON: released the PLCSIM API connection (Shutdown). The official control panel / TIA Portal can connect now."); }
+            try { SimulationRuntimeManager.Shutdown(); Log.Write("MAINTENANCE ON: disconnected from PLCSIM (Shutdown)."); }
             catch (Exception ex) { Log.Write("WARN maintenance Shutdown: " + ex.Message); }
             Forget(null);   // those interfaces belong to the released connection; new ones after Resume
         }
-        return ActionResult.Good("Maintenance mode ON — PLCSIM released. Open the official control panel / TIA now. Click Resume when you are done.");
+        return ActionResult.Good("Maintenance mode is on. You can open the official PLCSIM control panel now. Click Resume when you are done.");
     }
 
     public ActionResult ExitMaintenance()
     {
         lock (_gate)
         {
-            if (!Maintenance) return ActionResult.Good("Not in maintenance mode.");
+            if (!Maintenance) return ActionResult.Good("Maintenance mode is already off.");
             Maintenance = false;
-            // Reconnect lazily and reassert our global network config.
-            try { if (WaitForRuntime(10)) { ApplyGlobalNetwork(); Log.Write("MAINTENANCE OFF: reconnected to the PLCSIM runtime."); } else Log.Write("MAINTENANCE OFF: runtime not reachable yet; will retry on next access."); }
-            catch (Exception ex) { Log.Write("WARN maintenance resume: " + ex.Message); }
+            // Reconnect and reassert our global network config.
+            try
+            {
+                if (WaitForRuntime(10))
+                {
+                    ApplyGlobalNetwork();
+                    Log.Write("MAINTENANCE OFF: reconnected to PLCSIM.");
+                    return ActionResult.Good("Maintenance mode is off. Reconnected to PLCSIM.");
+                }
+                Log.Write("MAINTENANCE OFF: PLCSIM did not answer within 10 s.");
+                return ActionResult.Bad("Maintenance mode is off, but PLCSIM is not answering yet.");
+            }
+            catch (Exception ex)
+            {
+                Log.Write("WARN maintenance resume: " + ex.Message);
+                return ActionResult.Bad("Maintenance mode is off, but reconnecting to PLCSIM failed: " + ex.Message);
+            }
         }
-        return ActionResult.Good("Maintenance mode OFF — reconnected to PLCSIM.");
+    }
+
+    // Why a PLC command can't run right now.
+    private ActionResult Unavailable()
+    {
+        return ActionResult.Bad(Maintenance ? "Maintenance mode is on. Click Resume first." : "PLCSIM is not responding.");
+    }
+
+    // "'X' is in RUN." / "'X' is in STOP." / "'X' is powered off."
+    private static string StateText(string name, EOperatingState s)
+    {
+        if (s == EOperatingState.Run) return "'" + name + "' is in RUN.";
+        if (s == EOperatingState.Stop) return "'" + name + "' is in STOP.";
+        if (s == EOperatingState.Off) return "'" + name + "' is powered off.";
+        return "'" + name + "' is " + s + ".";
     }
 
     // ----- discovery -----
@@ -712,6 +742,7 @@ internal sealed class PlcManager
                 { "name", name },
                 { "plcName", plcName },
                 { "configured", configured },
+                { "inWorkspace", true },
                 { "registered", live.ContainsKey(name) },
                 { "state", state },
                 { "ip", ip },
@@ -724,7 +755,7 @@ internal sealed class PlcManager
         foreach (var kv in live)
             if (!defs.Any(d => string.Equals(d.Item1, kv.Key, StringComparison.OrdinalIgnoreCase)))
                 result.Add(new Dictionary<string, object> {
-                    { "name", kv.Key }, { "plcName", "(registered)" }, { "configured", false },
+                    { "name", kv.Key }, { "plcName", "" }, { "configured", false }, { "inWorkspace", false },
                     { "registered", true }, { "state", kv.Value[0] }, { "ip", kv.Value[1] },
                     { "cpuType", kv.Value.Length > 2 ? kv.Value[2] : "" },
                     { "poweredOn", kv.Value[0] != "Off" }, { "running", kv.Value[0] == "Run" },
@@ -871,7 +902,7 @@ internal sealed class PlcManager
             }
         }
         Keep(_control, name, inst.ID, inst);
-        Log.Write("  registered '" + name + "' (ID " + inst.ID + "); its interface is kept for the life of the process");
+        Log.Write("  registered '" + name + "' in PLCSIM (ID " + inst.ID + ")");
         return inst;
     }
 
@@ -1002,7 +1033,7 @@ internal sealed class PlcManager
     {
         lock (_gate)
         {
-            if (!RuntimeAvailable()) return ActionResult.Bad("Runtime manager not available.");
+            if (!RuntimeAvailable()) return Unavailable();
             try
             {
                 // Operational limiter, enforced in the BACKEND (not just the UI): a power-on is allowed
@@ -1014,9 +1045,8 @@ internal sealed class PlcManager
                 var others = on.Where(n => !string.Equals(n, name, StringComparison.OrdinalIgnoreCase)).ToList();
                 if (!nameAlreadyOn && others.Count >= _cfg.MaxPoweredOn)
                 {
-                    string lim = _cfg.MaxPoweredOn == 1 ? "only 1 PLC powered on at a time" : ("at most " + _cfg.MaxPoweredOn + " PLCs powered on at a time");
-                    return ActionResult.Bad("Cannot power on '" + name + "': " + others.Count +
-                        " already powered on (" + string.Join(", ", others.ToArray()) + "). Power one off first (" + lim + ").");
+                    return ActionResult.Bad("Can't power on '" + name + "': the limit is " + _cfg.MaxPoweredOn + " PLC" + (_cfg.MaxPoweredOn == 1 ? "" : "s") +
+                        " at once and " + string.Join(", ", others.ToArray()) + (others.Count == 1 ? " is" : " are") + " already on. Power one off first.");
                 }
 
                 // PLCSIM reverts the runtime NetworkMode to Softbus when idle. If nothing is running yet,
@@ -1029,7 +1059,7 @@ internal sealed class PlcManager
                 {
                     Log.Write("PowerOn '" + name + "'...");
                     var rc = inst.PowerOn(_cfg.PowerOnTimeout);
-                    if (rc != ERuntimeErrorCode.OK) return ActionResult.Bad("PowerOn returned " + rc);
+                    if (rc != ERuntimeErrorCode.OK) return ActionResult.Bad("PLCSIM did not power on '" + name + "' (" + rc + ").");
                 }
                 var st = WaitStable(inst, _cfg.PowerOnTimeout);
                 ApplyDesiredIp(inst, name);   // re-apply the saved IP (it does not persist by itself between power cycles)
@@ -1039,12 +1069,12 @@ internal sealed class PlcManager
                     catch (SimulationRuntimeException ex)
                     {
                         if (ex.Message.IndexOf("IsEmpty", StringComparison.OrdinalIgnoreCase) >= 0 || ex.Message.Contains("-52"))
-                            return ActionResult.Bad("'" + name + "' powered on but has NO program (download it from TIA Portal). Left in STOP.");
-                        return ActionResult.Bad("Run failed: " + ex.Message);
+                            return ActionResult.Bad("'" + name + "' is powered on but has no program, so it stays in STOP. Download a project to it from TIA Portal.");
+                        return ActionResult.Bad("'" + name + "' is powered on but did not go to RUN: " + ex.Message);
                     }
                 }
                 UpdateLastRunning();
-                return ActionResult.Good("'" + name + "' -> " + inst.OperatingState);
+                return ActionResult.Good(StateText(name, inst.OperatingState));
             }
             catch (Exception ex) { Log.Write("PowerOn ERROR: " + ex); return ActionResult.Bad(ex.Message); }
         }
@@ -1053,19 +1083,19 @@ internal sealed class PlcManager
     // Sets the PLC IPv4 suite. Requires the instance to be powered on (Stop/Run).
     public ActionResult SetIp(string name, string ip, string mask, string gw)
     {
-        if (string.IsNullOrEmpty(ip)) return ActionResult.Bad("Empty IP.");
+        if (string.IsNullOrEmpty(ip)) return ActionResult.Bad("Enter an IP address.");
         if (string.IsNullOrEmpty(mask)) mask = "255.255.255.0";
         if (string.IsNullOrEmpty(gw)) gw = "0.0.0.0";
         lock (_gate)
         {
-            if (!RuntimeAvailable()) return ActionResult.Bad("Runtime manager not available.");
+            if (!RuntimeAvailable()) return Unavailable();
             try
             {
                 SInstanceInfo info;
-                if (!TryFindRegistered(name, out info)) return ActionResult.Bad("'" + name + "' is not powered on. Power it on first to set its IP.");
+                if (!TryFindRegistered(name, out info)) return ActionResult.Bad("'" + name + "' is powered off. Power it on first, then set its IP.");
                 var inst = Iface(_control, info);
                 if (inst.OperatingState == EOperatingState.Off)
-                    return ActionResult.Bad("'" + name + "' is powered off. Power it on first to set its IP.");
+                    return ActionResult.Bad("'" + name + "' is powered off. Power it on first, then set its IP.");
                 inst.SetIPSuite(0, new SIPSuite4(ip, mask, gw), false);
                 // Save it so it is re-applied automatically on every power-on (it does not persist by itself).
                 _cfg.DesiredIp[name] = ip + "," + mask + "," + gw;
@@ -1073,7 +1103,7 @@ internal sealed class PlcManager
                 string now = "";
                 try { var ips = inst.ControllerIP; if (ips != null) now = string.Join(", ", ips.Where(x => !string.IsNullOrEmpty(x))); } catch { }
                 Log.Write("SetIPSuite '" + name + "' -> " + ip + " / " + mask + " gw " + gw + "  (current: " + now + ", saved for re-apply)");
-                return ActionResult.Good("IP of '" + name + "' set to " + ip + " (will be re-applied on every power-on)");
+                return ActionResult.Good("IP of '" + name + "' set to " + ip + ". It is set again every time '" + name + "' is powered on.");
             }
             catch (Exception ex) { Log.Write("SetIp ERROR: " + ex.Message); return ActionResult.Bad(ex.Message); }
         }
@@ -1086,15 +1116,15 @@ internal sealed class PlcManager
     {
         lock (_gate)
         {
-            if (!RuntimeAvailable()) return ActionResult.Bad("Runtime not available (exit maintenance mode first).");
-            if (string.IsNullOrWhiteSpace(name)) return ActionResult.Bad("No instance name.");
+            if (!RuntimeAvailable()) return Unavailable();
+            if (string.IsNullOrWhiteSpace(name)) return ActionResult.Bad("No PLC name given.");
             try
             {
                 SInstanceInfo info;
                 bool reg = TryFindRegistered(name, out info);
                 // Only wipe a KNOWN instance (registered now, or defined in the workspace). Never create one.
                 bool known = reg || ReadWorkspacePlcs(_cfg.Workspace).Any(d => string.Equals(d.Item1, name, StringComparison.OrdinalIgnoreCase));
-                if (!known) return ActionResult.Bad("'" + name + "' is not a known instance.");
+                if (!known) return ActionResult.Bad("There is no PLC named '" + name + "'.");
                 var inst = reg ? Iface(_control, info) : GetOrRegister(name);
 
                 string oldCpu = ""; try { oldCpu = inst.CPUType.ToString(); } catch { }
@@ -1122,8 +1152,7 @@ internal sealed class PlcManager
                 _cfg.LastRunning.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
                 _cfg.Save();
 
-                string msg = "'" + name + "' wiped to a blank CPU" + (string.IsNullOrEmpty(cpuNow) ? "" : " (" + cpuNow + ")") + ". Now download your project from TIA Portal; it can be a different CPU.";
-                return ActionResult.Good(msg);
+                return ActionResult.Good("Program of '" + name + "' erased. It is now a blank PLC (CPU type unspecified) and powered off. Power it on and download your project from TIA Portal.");
             }
             catch (Exception ex) { Log.Write("Wipe ERROR '" + name + "': " + ex); return ActionResult.Bad(ex.Message); }
         }
@@ -1146,24 +1175,24 @@ internal sealed class PlcManager
     {
         lock (_gate)
         {
-            if (!RuntimeAvailable()) return ActionResult.Bad("Runtime not available (exit maintenance mode first).");
-            if (_cfg.StorageLayout != "default") return ActionResult.Bad("Creating CPUs needs storage_layout = default.");
+            if (!RuntimeAvailable()) return Unavailable();
+            if (_cfg.StorageLayout != "default") return ActionResult.Bad("Creating PLCs needs storage_layout = default in appconfig.txt.");
             if (string.IsNullOrEmpty(_cfg.Workspace) || !File.Exists(Path.Combine(_cfg.Workspace, "Instance.JSON")))
-                return ActionResult.Bad("No workspace selected.");
+                return ActionResult.Bad("Select a workspace first.");
             name = (name ?? "").Trim();
-            if (name.Length == 0) return ActionResult.Bad("Enter a name for the new CPU.");
-            if (!CpuNameRx.IsMatch(name)) return ActionResult.Bad("Invalid name '" + name + "': use up to 64 letters, digits, '-' or '_'.");
-            if (WindowsReservedNames.Contains(name)) return ActionResult.Bad("'" + name + "' is a name Windows reserves; choose another.");
-            if (InWorkspace(name)) return ActionResult.Bad("There is already a CPU named '" + name + "' in this workspace.");
+            if (name.Length == 0) return ActionResult.Bad("Enter a name for the new PLC.");
+            if (!CpuNameRx.IsMatch(name)) return ActionResult.Bad("'" + name + "' is not a valid name. Use only letters, digits, - and _ (up to 64).");
+            if (WindowsReservedNames.Contains(name)) return ActionResult.Bad("Windows reserves the name '" + name + "'. Choose another.");
+            if (InWorkspace(name)) return ActionResult.Bad("This workspace already has a PLC named '" + name + "'.");
             SInstanceInfo info;
-            if (TryFindRegistered(name, out info)) return ActionResult.Bad("There is already a CPU named '" + name + "' in PLCSIM.");
+            if (TryFindRegistered(name, out info)) return ActionResult.Bad("PLCSIM already has a PLC named '" + name + "'. Choose another name.");
             // Storage is found by name, so leftover data with this name would come back as this CPU's program.
             // It may belong to a CPU of another workspace, so it is never cleared here.
             string storage;
             try { storage = Path.Combine(SimulationRuntimeManager.DefaultStoragePath, name); }
             catch (Exception ex) { return ActionResult.Bad("Could not read PLCSIM's storage folder: " + ex.Message); }
             if (Directory.Exists(storage) && Directory.EnumerateFileSystemEntries(storage).Any())
-                return ActionResult.Bad("There is already saved data for a CPU named '" + name + "' (" + storage + "), maybe from another workspace. Choose another name.");
+                return ActionResult.Bad("PLCSIM already has saved data under the name '" + name + "' (" + storage + "), maybe from a PLC in another workspace. Choose another name.");
 
             IInstance inst;
             try { inst = GetOrRegister(name); }
@@ -1178,7 +1207,7 @@ internal sealed class PlcManager
             }
             string path = ""; try { path = inst.StoragePath; } catch { }
             Log.Write("CREATE '" + name + "': registered in PLCSIM (storage " + path + ") and added to workspace '" + Path.GetFileName(_cfg.Workspace) + "'.");
-            return ActionResult.Good("'" + name + "' created as a blank CPU. Power it on and download your project from TIA Portal.");
+            return ActionResult.Good("'" + name + "' created: a blank PLC with no program. Power it on and download your project from TIA Portal.");
         }
     }
 
@@ -1188,13 +1217,13 @@ internal sealed class PlcManager
     {
         lock (_gate)
         {
-            if (!RuntimeAvailable()) return ActionResult.Bad("Runtime not available (exit maintenance mode first).");
-            if (_cfg.StorageLayout != "default") return ActionResult.Bad("Deleting CPUs needs storage_layout = default.");
-            if (string.IsNullOrWhiteSpace(name)) return ActionResult.Bad("No instance name.");
+            if (!RuntimeAvailable()) return Unavailable();
+            if (_cfg.StorageLayout != "default") return ActionResult.Bad("Deleting PLCs needs storage_layout = default in appconfig.txt.");
+            if (string.IsNullOrWhiteSpace(name)) return ActionResult.Bad("No PLC name given.");
             SInstanceInfo info;
             bool reg = TryFindRegistered(name, out info);
             bool inWs = InWorkspace(name);
-            if (!reg && !inWs) return ActionResult.Bad("'" + name + "' is not a known instance.");
+            if (!reg && !inWs) return ActionResult.Bad("There is no PLC named '" + name + "'.");
             try
             {
                 var inst = reg ? Iface(_control, info) : GetOrRegister(name);
@@ -1214,13 +1243,13 @@ internal sealed class PlcManager
                     Directory.Delete(wsDir, true);
 
                 var cleared = new List<string>();
-                if (_cfg.DesiredIp.Remove(name)) cleared.Add("saved IP");
-                if (_cfg.LastRunning.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) > 0) cleared.Add("last-running entry");
-                if (string.Equals(_cfg.AutostartInstance, name, StringComparison.OrdinalIgnoreCase)) { _cfg.AutostartInstance = ""; cleared.Add("fixed auto-start instance"); }
+                if (_cfg.DesiredIp.Remove(name)) cleared.Add("its saved IP");
+                if (_cfg.LastRunning.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) > 0) cleared.Add("its place in the auto-start list");
+                if (string.Equals(_cfg.AutostartInstance, name, StringComparison.OrdinalIgnoreCase)) { _cfg.AutostartInstance = ""; cleared.Add("its selection as the auto-start PLC"); }
                 if (cleared.Count > 0) _cfg.Save();
 
-                Log.Write("DELETE '" + name + "': storage cleared (" + path + "), unregistered from PLCSIM" + (inWs ? ", removed from workspace '" + Path.GetFileName(_cfg.Workspace) + "'" : "") + (cleared.Count > 0 ? "; cleared " + string.Join(", ", cleared.ToArray()) : "") + ".");
-                return ActionResult.Good("'" + name + "' deleted." + (cleared.Count > 0 ? " Also cleared its " + string.Join(", ", cleared.ToArray()) + "." : ""));
+                Log.Write("DELETE '" + name + "': storage cleared (" + path + "), unregistered from PLCSIM" + (inWs ? ", removed from workspace '" + Path.GetFileName(_cfg.Workspace) + "'" : "") + (cleared.Count > 0 ? "; also removed " + string.Join(", ", cleared.ToArray()) : "") + ".");
+                return ActionResult.Good("'" + name + "' deleted." + (cleared.Count > 0 ? " Also removed " + string.Join(", ", cleared.ToArray()) + "." : ""));
             }
             catch (Exception ex) { Log.Write("DELETE ERROR '" + name + "': " + ex); return ActionResult.Bad(ex.Message); }
         }
@@ -1240,20 +1269,20 @@ internal sealed class PlcManager
     {
         lock (_gate)
         {
-            if (!RuntimeAvailable()) return ActionResult.Bad("Runtime manager not available.");
+            if (!RuntimeAvailable()) return Unavailable();
             try
             {
                 SInstanceInfo info;
-                if (!TryFindRegistered(name, out info)) return ActionResult.Bad("'" + name + "' is not registered (power it on first).");
+                if (!TryFindRegistered(name, out info)) return ActionResult.Bad("'" + name + "' is powered off.");
                 var inst = Iface(_control, info);
                 Log.Write(label + " '" + name + "' (state " + inst.OperatingState + ")");
                 act(inst);
-                return ActionResult.Good("'" + name + "' -> " + inst.OperatingState);
+                return ActionResult.Good(StateText(name, inst.OperatingState));
             }
             catch (SimulationRuntimeException ex)
             {
                 if (ex.Message.IndexOf("IsEmpty", StringComparison.OrdinalIgnoreCase) >= 0 || ex.Message.Contains("-52"))
-                    return ActionResult.Bad("'" + name + "' has no program loaded.");
+                    return ActionResult.Bad("'" + name + "' has no program. Download a project to it from TIA Portal.");
                 return ActionResult.Bad(ex.Message);
             }
             catch (Exception ex) { Log.Write(label + " ERROR: " + ex); return ActionResult.Bad(ex.Message); }
@@ -1341,7 +1370,7 @@ internal sealed class WebServer
             {
                 case "start": case "poweron": case "run": case "stop":
                 case "poweroff": case "setip": case "network":
-                    WriteResult(ctx, ActionResult.Bad("Maintenance mode is ON — click Resume before controlling PLCs."));
+                    WriteResult(ctx, ActionResult.Bad("Maintenance mode is on. Click Resume first."));
                     return;
             }
         }
@@ -1387,9 +1416,9 @@ internal sealed class WebServer
                 {
                     string ws = Name();
                     var match = _plc.ListWorkspaces().FirstOrDefault(w => string.Equals((string)w["name"], ws, StringComparison.OrdinalIgnoreCase));
-                    if (match == null) { WriteResult(ctx, ActionResult.Bad("workspace not found")); return; }
+                    if (match == null) { WriteResult(ctx, ActionResult.Bad("Workspace '" + ws + "' not found.")); return; }
                     _cfg.Workspace = (string)match["path"]; _cfg.Save();
-                    WriteResult(ctx, ActionResult.Good("workspace -> " + ws));
+                    WriteResult(ctx, ActionResult.Good("Workspace: " + ws));
                     return;
                 }
             case "autostart":
@@ -1402,8 +1431,10 @@ internal sealed class WebServer
                     }
                     _cfg.Save();
                     bool fixedMode = string.Equals(_cfg.AutostartMode, "fixed", StringComparison.OrdinalIgnoreCase);
-                    string desc = fixedMode ? ("fixed: " + _cfg.AutostartInstance) : "last running set";
-                    WriteResult(ctx, ActionResult.Good("auto-start " + (_cfg.AutostartEnabled ? "ON" : "OFF") + " (" + desc + ")"));
+                    string msg = !_cfg.AutostartEnabled ? "Auto-start at boot is off."
+                        : fixedMode ? "Auto-start at boot is on: it powers on " + (string.IsNullOrEmpty(_cfg.AutostartInstance) ? "(no PLC selected)" : "'" + _cfg.AutostartInstance + "'") + "."
+                        : "Auto-start at boot is on: it powers on the PLCs that were on before.";
+                    WriteResult(ctx, ActionResult.Good(msg));
                     return;
                 }
             case "limit":
@@ -1413,8 +1444,8 @@ internal sealed class WebServer
                     else if (!string.IsNullOrEmpty(q["max"])) int.TryParse(q["max"], out newMax);
                     if (newMax < 1) newMax = 1;
                     _cfg.MaxPoweredOn = newMax; _cfg.Save();   // NOT clamped to the hard cap (lets the user test)
-                    string msg = "operational power-on limit = " + newMax;
-                    if (newMax > _cfg.HardMaxPoweredOn) msg += " (above the autostart safety cap " + _cfg.HardMaxPoweredOn + " - fine for manual testing; auto-start still restores at most " + _cfg.HardMaxPoweredOn + ")";
+                    string msg = "Limit set: up to " + newMax + " PLC" + (newMax == 1 ? "" : "s") + " powered on at once.";
+                    if (newMax > _cfg.HardMaxPoweredOn) msg += " Auto-start still powers on at most " + _cfg.HardMaxPoweredOn + " at boot.";
                     WriteResult(ctx, ActionResult.Good(msg));
                     return;
                 }
@@ -1425,14 +1456,14 @@ internal sealed class WebServer
                     else if (!string.IsNullOrEmpty(q["max"])) int.TryParse(q["max"], out newHard);
                     if (newHard < 1) newHard = 1;
                     _cfg.HardMaxPoweredOn = newHard; _cfg.Save();
-                    WriteResult(ctx, ActionResult.Good("Auto-start cap = " + newHard + " (auto-start brings up at most " + newHard + " PLC" + (newHard == 1 ? "" : "s") + " after a reboot)"));
+                    WriteResult(ctx, ActionResult.Good("Auto-start cap set: at boot, auto-start powers on at most " + newHard + " PLC" + (newHard == 1 ? "" : "s") + "."));
                     return;
                 }
             case "clear-safemode":
                 {
                     BootGuard.WriteAttempts(_exeDir, 0);
                     _plc.SafeMode = false; _plc.SafeModeReason = "";
-                    WriteResult(ctx, ActionResult.Good("Auto-start re-enabled: boot-attempt counter reset."));
+                    WriteResult(ctx, ActionResult.Good("Auto-start re-enabled. The failed-boot counter is back to 0."));
                     return;
                 }
             case "maintenance":
@@ -1450,8 +1481,8 @@ internal sealed class WebServer
                         if (body.ContainsKey("adapterName")) _cfg.AdapterName = Convert.ToString(body["adapterName"]);
                     }
                     _cfg.Save();
-                    try { _plc.ApplyGlobalNetwork(); WriteResult(ctx, ActionResult.Good("network -> " + _cfg.NetworkMode + (_cfg.UsesAdapter() ? " / " + _cfg.AdapterName : ""))); }
-                    catch (Exception ex) { WriteResult(ctx, ActionResult.Bad("saved, but applying failed: " + ex.Message)); }
+                    try { _plc.ApplyGlobalNetwork(); WriteResult(ctx, ActionResult.Good("Network: " + _cfg.NetworkMode + (_cfg.UsesAdapter() ? ", adapter " + _cfg.AdapterName : "") + ".")); }
+                    catch (Exception ex) { WriteResult(ctx, ActionResult.Bad("Network setting saved, but PLCSIM did not apply it: " + ex.Message)); }
                     return;
                 }
             default: ctx.Response.StatusCode = 404; WriteJson(ctx, new Dictionary<string, object> { { "ok", false }, { "error", "unknown endpoint" } }); return;
@@ -1557,12 +1588,12 @@ internal sealed class PlcService : ServiceBase
                     if (SessionLauncher.TryLaunchInteractive(exe, _exeDir, out p, out why))
                     {
                         _child = p; warnedNoSession = false;
-                        Log.Write("Launched web app in the interactive session.");
+                        Log.Write("Started the web app in the session of the user signed in at the console.");
                     }
                     else if (!warnedNoSession)
                     {
                         warnedNoSession = true;
-                        Log.Write("Waiting for an interactive session before launching the web app (" + why + ").");
+                        Log.Write("Web app not started yet: waiting for a user signed in at the machine's console (" + why + "). A disconnected Remote Desktop session doesn't count.");
                     }
                 }
             }
@@ -1624,7 +1655,7 @@ internal static class SessionLauncher
         {
             uint sid = WTSGetActiveConsoleSessionId();
             if (sid == INVALID_SESSION || sid == 0) { why = "no active console session"; return false; }
-            if (!WTSQueryUserToken(sid, out userToken)) { why = "no user logged on (err " + Marshal.GetLastWin32Error() + ")"; return false; }
+            if (!WTSQueryUserToken(sid, out userToken)) { why = "no user at the console (err " + Marshal.GetLastWin32Error() + ")"; return false; }
 
             // Prefer the elevated (linked) token so the web app runs elevated, matching PLCSIM's needs.
             IntPtr tokenToUse = userToken;

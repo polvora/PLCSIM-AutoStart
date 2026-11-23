@@ -1,118 +1,118 @@
 # PLCSIM Auto-Start
 
-**Automatic startup (and remote web control) for Siemens S7-PLCSIM Advanced virtual PLCs.**
+**Powers on your Siemens S7-PLCSIM Advanced PLCs automatically at boot, and lets you control them from a
+browser.**
 
 ![PLCSIM Auto-Start web interface](docs/ui.png)
 
-PLCSIM Auto-Start is a small always-on web app that **extends** S7-PLCSIM Advanced — it does **not**
-replace it. It works on the same workspace as the Siemens PLCSIM GUI and adds what the GUI doesn't give
-you:
+PLCSIM Auto-Start is a small web app that runs all the time next to S7-PLCSIM Advanced. It doesn't replace
+PLCSIM: it works on the same workspace as the Siemens PLCSIM GUI and adds three things:
 
-- 🔄 **Automatic startup** — your PLCs come back up on their own after a server reboot, completely
-  unattended. This is the headline feature. See
-  [enabling auto-start](#enabling-auto-start-capacity-and-the-freeze-loop-risk) for the one capacity
-  setting to get right first.
-- 🌐 **Remote control from a browser** — power on, RUN, STOP and power off your PLCs from any machine
-  on the network. Manage a headless simulation host from your own desktop or another VM, with no
-  remote-desktop session needed.
-- 💾 **Persistent by default** — every instance is registered against PLCSIM's persistent storage, so a
-  PLC's downloaded program survives a restart. Combined with auto-start, a PLC comes back on its own
-  after a reboot — nothing to re-open, nothing to re-download from TIA.
+- 🔄 **Auto-start at boot.** After the machine restarts, the PLCs that were on come back on by themselves,
+  with nobody there (this needs auto-logon, which the installer offers). Read
+  [Capacity](#capacity-how-many-plcs-this-machine-can-run) before you turn it on.
+- 🌐 **Control from a browser.** Power on, RUN, STOP and power off your PLCs from any machine on the
+  network, without Remote Desktop.
+- 💾 **Programs survive a restart.** Each PLC keeps the program you downloaded from TIA Portal, so after a
+  reboot there is nothing to download again.
 
-> Independent, open-source tool — **not** affiliated with Siemens. It uses the Siemens PLCSIM Advanced
-> API, which you install separately under your own Siemens license. The proprietary Siemens DLL is
-> **not** included here; the tool locates the one already on your machine.
+> Independent, open-source tool, **not** affiliated with Siemens. It uses the Siemens PLCSIM Advanced API,
+> which you install separately under your own Siemens license. The Siemens DLL is **not** included here;
+> the tool finds the one already installed on your machine.
 
 ---
 
 ## Other features
 
-Beyond remote control and auto-start:
-
-- **Power-on limit** — cap how many PLCs can be powered on at once (default **1**, adjustable in the UI).
-- **Per-PLC IP override**, re-applied on every power-on, so a PLC stays reachable on your subnet.
-- **Network mode**: Softbus (zero-config) or TCP/IP mapped to a host adapter.
-- **Create and delete CPUs** — add a new blank CPU to the workspace from the browser, or delete a
-  powered-off one (its saved program is deleted, no backup).
-- **Maintenance mode** — a one-click release of the PLCSIM connection so the official control panel /
-  TIA Portal can connect, without stopping the service. Entering it powers off the PLCs this tool powered
-  on; one click resumes.
-- **Wipe CPU** — clear an instance's saved program back to a blank/unspecified CPU so you can load a
-  project with a *different* CPU from TIA Portal.
-- **Installs as a Windows Service** you Start/Stop from `services.msc` / Task Manager. (Because PLCSIM
-  needs an interactive session, the service is a launcher that runs the app in the logged-in session;
-  `-AsTask` uses a Scheduled Task instead. See [docs/INSTALL.md](docs/INSTALL.md#how-the-service-works-the-session-0-catch).)
+- **Power-on limit:** the most PLCs the page lets you power on at once (default **1**).
+- **Fixed IP per PLC:** set from the page, and set again every time the PLC is powered on.
+- **Network mode:** Softbus (no setup) or TCP/IP through a network adapter of the machine.
+- **New PLC and Delete:** create a blank PLC in the workspace, or delete a powered-off one. Deleting
+  deletes its program, with no backup.
+- **Erase program:** erases a PLC's program and hardware configuration so TIA Portal can download a project
+  with a different CPU.
+- **Maintenance mode:** disconnects this tool from PLCSIM without stopping the service, so the official
+  PLCSIM control panel can connect. It powers off the PLCs this tool powered on.
+- **Runs as a Windows Service** that you start and stop from `services.msc`. PLCSIM needs a signed-in user,
+  so the service starts the app in the session of the user signed in at the machine's console. See
+  [docs/INSTALL.md](docs/INSTALL.md#how-the-service-works).
 
 ---
 
 ## Requirements
 
 - **Windows 10 / Windows Server 2016 or newer** (x64).
-- **Siemens S7-PLCSIM Advanced** installed (tested with **V20**). Provides the runtime and the API DLL.
-- **.NET Framework 4.x** — built into modern Windows; no Visual Studio or .NET SDK required.
-- A **logged-in Windows session** — i.e. a user signed in to the desktop, not the hidden SYSTEM
-  context. PLCSIM needs this for networking, so the Windows Service runs as a *launcher* that starts the
-  app inside the logged-in session. For a server to recover on its own after a reboot, enable auto-logon
-  (the installer offers it; see [docs/INSTALL.md](docs/INSTALL.md)).
+- **Siemens S7-PLCSIM Advanced** (tested with **V20**). It provides the runtime and the API DLL.
+- **.NET Framework 4.x**, which is already part of Windows. No Visual Studio or .NET SDK needed.
+- **A user signed in to Windows** at the machine's console. PLCSIM needs it for networking. For a machine
+  that must recover by itself after a reboot, turn on auto-logon (the installer offers it; see
+  [docs/INSTALL.md](docs/INSTALL.md)).
 
 ---
 
 ## Quick start (no programming needed)
 
-1. **Download** the project — green **Code** button → **Download ZIP**. You get
-   **`PLCSIM-AutoStart-main.zip`** (the prebuilt `PlcsimAutoStart.exe` is inside). Extract it anywhere;
-   it produces a `PLCSIM-AutoStart-main` folder.
-2. **Double-click `Install.cmd`** and accept the admin prompt (UAC). It sets everything up: detects
-   your PLCSIM Advanced install, makes the UI reachable from the LAN (no authentication; it opens the
-   firewall for the port), creates `appconfig.txt`, installs an always-on **Windows Service** (Start/Stop
-   it from `services.msc` / Task Manager), and offers to enable **auto-logon** for fully unattended boot.
-   *(Command-line alternative: run `scripts\install.ps1` from an elevated PowerShell; add `-LocalOnly`
-   to bind to localhost.)*
-3. Open the UI:
+1. **Download** the project: green **Code** button → **Download ZIP**. You get
+   **`PLCSIM-AutoStart-main.zip`**, with the ready-to-run `PlcsimAutoStart.exe` inside. Extract it anywhere.
+2. **Double-click `Install.cmd`** and accept the administrator prompt (UAC). It:
+   - finds your PLCSIM Advanced installation,
+   - makes the page reachable from the network (no login; it opens the port in the firewall),
+   - creates `appconfig.txt`,
+   - installs the **Windows Service "PLCSIM AutoStart"**,
+   - offers to turn on **auto-logon** for unattended boot.
+
+   *(From an elevated PowerShell you can run `scripts\install.ps1` instead. Add `-LocalOnly` to make the
+   page reachable only from this machine.)*
+3. Open the page:
    - on this machine: **http://localhost:8090**
    - from another machine: **http://&lt;this-machine-ip&gt;:8090**
 
-That's it. To remove it later, run `.\scripts\uninstall.ps1` as administrator.
+To remove it later, run `.\scripts\uninstall.ps1` as administrator.
 
 ---
 
 ## For developers
 
-The prebuilt `PlcsimAutoStart.exe` ships in the repo. Only if you change the backend
-(`src\PlcsimAutoStart.cs`) or UI (`wwwroot\index.html`), rebuild with `.\scripts\build.ps1` — no IDE
-needed, just the in-box .NET Framework compiler.
+The ready-to-run `PlcsimAutoStart.exe` is in the repo. After you change `src\PlcsimAutoStart.cs`, rebuild
+it with `.\scripts\build.ps1`. The build uses the C# compiler that comes with the .NET Framework; no IDE
+needed.
 
 ---
 
-## Enabling auto-start: capacity and the freeze-loop risk
+## Capacity: how many PLCs this machine can run
 
-Auto-start turns your PLCs on every time the machine boots. Each virtual PLC uses real CPU and memory,
-so one setting needs to match what your machine can handle.
+Each running PLC uses real CPU and memory. On a 2-vCPU Azure VM, one running PLC (a CPU 1517F) used a full
+CPU core and about 960 MB of memory. With a second PLC powered on, the whole machine froze. The page barely
+responded, but powering the second PLC off from it worked, and the machine recovered.
 
-**The risk.** If auto-start turns on more PLCs than the machine can run at once, it can slow down or
-freeze while they start. Auto-start runs on every boot, so if a freeze forces a restart, the same thing
-happens again on the next boot — a freeze/reboot loop.
+Two settings limit how many PLCs are on:
 
-**The cap.** `hard_max_powered_on` (the auto-start cap) is the most PLCs auto-start will turn on. Set it
-to how many this machine can run at once. The default is **1**. It only affects auto-start — the manual
-limit `max_powered_on` can be higher for testing, and does not change what happens at the next boot. Both
-can be changed in the UI; raising the cap asks you to confirm.
+| Setting | On the page | What it limits |
+|---|---|---|
+| `max_powered_on` | **Max. powered on at once** (PLCs card) | The page buttons. When that many PLCs are on, the page doesn't let you power on another. |
+| `hard_max_powered_on` | **Auto-start cap** (Auto-start card) | Auto-start at boot. It doesn't power on more PLCs than this. |
 
-**The loop-breaker.** A backup in case the cap is too high. After each auto-start, the tool checks if the
-machine came up working — not just that the PLCs say they are on, but that the web page keeps responding
-for a while, because a frozen machine can still look alive. If several boots in a row fail this check,
-the tool stops turning PLCs on at boot and shows a red **SAFE MODE** banner, with a *Re-enable* button to
-use after you reduce the load.
+Both are **1** by default. The page limit can be set higher than the auto-start cap, but only raise it if
+the machine can run that many PLCs at once.
 
-Every value is tunable in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+**Why the auto-start cap matters.** If auto-start powers on more PLCs than the machine can run, the machine
+can freeze during boot. Auto-start runs on every boot, so it would freeze again after each restart. Set the
+cap to the number of PLCs the machine can really run.
+
+**The loop-breaker.** After auto-start, the tool checks for a while (90 s by default) that PLCSIM and its
+own web page keep answering. If several boots in a row (2 by default) fail that check, the next boot skips
+auto-start and the page shows a red **SAFE MODE** banner. Lower the auto-start cap, then click
+**Re-enable auto-start**.
+
+All settings are explained in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ---
 
 ## Documentation
 
-- [docs/INSTALL.md](docs/INSTALL.md) — install, auto-logon, LAN access.
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — every `appconfig.txt` key.
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common problems and fixes.
+- [docs/INSTALL.md](docs/INSTALL.md): install, auto-logon, network access.
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md): every `appconfig.txt` setting.
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): common problems and what to do.
 
 ## License
 

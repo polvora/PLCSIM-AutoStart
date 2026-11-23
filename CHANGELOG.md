@@ -6,18 +6,26 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- **Create and delete CPUs** from the web page. **+ New CPU** registers a blank (unspecified) CPU in
-  PLCSIM and adds it to the workspace's `Instance.JSON`; names that already exist, or that already have
-  saved data in PLCSIM's storage, are refused. **Delete**, for a powered-off CPU, permanently deletes its
-  saved data (no backup), unregisters it from PLCSIM and removes it from the workspace. Both need
-  `storage_layout = default`.
-- **Maintenance mode**: a UI button that releases the PLCSIM connection without stopping the service, so
-  the official PLCSIM Advanced control panel / TIA Portal can connect. Entering it powers off the PLCs this
-  tool powered on. A banner and a **Resume** button reconnect when you're done.
-- **Wipe CPU**: a per-instance button that clears the saved program and hardware config so the instance
-  comes back as a blank (unspecified) CPU — for loading a project with a *different* CPU from TIA Portal.
-  It powers the instance off, permanently clears its storage (no backup), and unregisters it. The
-  instance's CPU type is now shown in the list.
+- **New PLC and Delete** on the web page. **+ New PLC** registers a blank PLC (no program, CPU type
+  unspecified) in PLCSIM and adds it to the workspace's `Instance.JSON`. It refuses a name that already
+  exists, or that already has saved data in PLCSIM's storage. **Delete** works on a powered-off PLC: it
+  deletes the PLC's saved data (no backup), unregisters it from PLCSIM and removes it from the workspace.
+  Both need `storage_layout = default`.
+- **Maintenance mode**: a button that disconnects this tool from PLCSIM without stopping the service, so the
+  official PLCSIM control panel can connect. Entering it powers off the PLCs this tool powered on. Click
+  **Resume** when you are done.
+- **Erase program**: a button on each PLC that erases its saved program and hardware configuration, so
+  TIA Portal can download a project with a *different* CPU. It powers the PLC off, erases its storage (no
+  backup) and unregisters it. The PLC's CPU type is now shown in the list.
+
+### Changed
+- Clearer texts on the web page, in its messages, in the logs and in the documentation. The page now says
+  "PLC" everywhere: **+ New CPU** is now **+ New PLC**, and **Wipe CPU** is now **Erase program**.
+- The documentation no longer says that the page limit (`max_powered_on`) can't exceed the auto-start cap.
+  It can, and on a 2-vCPU VM a second PLC froze the whole machine. The README now has a Capacity section
+  with that example.
+- The page no longer shows "Unconfigured PLC · not configured" under each PLC. Those values come from the
+  workspace file and don't say whether the PLC has a program.
 
 ### Fixed
 - **PLCs shutting down by themselves at random.** The symptom was an orderly "Shut down" (RUN to OFF) in
@@ -49,8 +57,8 @@ First public release.
   - staggered start (one instance at a time, abort on failure).
 - **Per-PLC IP override** that is re-applied on every power-on.
 - Networking via **Softbus** (default, zero-config) or **TCP/IP** mapped to a host adapter.
-- Self-contained: builds with the in-box .NET Framework `csc.exe` (no Visual Studio / .NET SDK),
-  auto-detects the Siemens PLCSIM Advanced API DLL, and runs as an always-on Scheduled Task.
+- Self-contained: builds with the in-box .NET Framework `csc.exe` (no Visual Studio / .NET SDK) and
+  auto-detects the Siemens PLCSIM Advanced API DLL.
 - Guided installer, uninstaller, and an optional auto-logon helper for unattended boot.
 - Installs by default as a **Windows Service** (manageable from `services.msc` / Task Manager). Because
   PLCSIM can't run from session 0, the service is a launcher that starts the web app in the logged-in

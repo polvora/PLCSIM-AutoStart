@@ -1,65 +1,68 @@
-# PLCSIM-AutoStart configuration template.
-# The installer copies this to appconfig.txt next to the executable.
-# The service rewrites appconfig.txt when you change settings from the web UI,
-# so edit it manually only while the service is STOPPED.
-# A blank value means "use the built-in default".
-# Full reference: docs/CONFIGURATION.md
+# PLCSIM-AutoStart settings (template).
+# The installer copies this file to appconfig.txt next to PlcsimAutoStart.exe.
+# The tool rewrites appconfig.txt when you change a setting on the web page,
+# so edit it by hand only while the service is STOPPED.
+# An empty value means "use the default".
+# Every setting is explained in docs/CONFIGURATION.md.
 
 # ---- Web server ----
-# URL the service listens on. Default http://+:8090/ = all interfaces (reachable from the LAN),
-# because remote control is the main feature. The installer also opens the firewall for the port.
-# Use http://localhost:8090/ instead if you want local-only access.
+# Address the page listens on. http://+:8090/ = reachable from the network (the installer also opens
+# the port in the firewall). Use http://localhost:8090/ to allow only this machine.
 http_prefix = http://+:8090/
 
 # ---- Workspace ----
-# Folder that contains your PLCSIM workspaces. Blank = <Documents>\PLCSIM of the account running the service.
+# Folder that holds your PLCSIM workspaces. Empty = <Documents>\PLCSIM of the account the app runs as.
 workspace_root =
-# Active workspace folder. Blank = auto-detect the most recently used one.
+# The workspace the page shows. Empty = the most recently changed one.
 workspace =
 
-# ---- Instance auto-start ----
+# ---- Auto-start at boot ----
 autostart_enabled = false
-# last  = restore whatever was powered on before the last shutdown.
-# fixed = always power on the single instance named in autostart_instance.
+# last  = power on the PLCs that were on before the restart.
+# fixed = always power on the PLC named in autostart_instance.
 autostart_mode = last
 autostart_instance =
 
-# ---- Power-on limit ----
-# The most PLCs you can power on by hand at once (also editable in the UI).
+# ---- How many PLCs can be on ----
+# The most PLCs the web page lets you power on at once. It can be higher than the auto-start cap.
+# Only raise it if this machine can run that many PLCs at once.
 max_powered_on = 1
-# The auto-start cap: the most PLCs auto-start turns on at boot (also editable in the UI).
-# Set it to how many this machine can run at once. Only affects auto-start; the manual limit can be higher.
+# The auto-start cap: the most PLCs auto-start powers on at boot.
+# Set it to the number of PLCs this machine can really run.
 hard_max_powered_on = 1
 
 # ---- Boot protections (loop-breaker) ----
-# How many boots in a row can fail to come up working before the service stops auto-starting (SAFE MODE).
+# How many boots in a row can fail the check below before auto-start is skipped (SAFE MODE).
 boot_fail_limit = 2
-# How long (seconds) after auto-start the machine must keep responding before the boot counts as good.
+# After auto-start, how long (seconds) PLCSIM and the page must keep answering for the boot to count as good.
 stable_seconds = 90
-# Pause (ms) between power-ons during auto-start, so they don't all start at the same time.
+# Pause (ms) between PLCs during auto-start, so they don't all start at the same moment.
 start_stagger_ms = 4000
-# How often (ms) the tool checks its own web page, and how long a check may take before it counts as
-# failed (the sign of a machine that looks alive but is frozen).
+# How often (ms) the tool checks that its own page answers, and how long (ms) a check may take
+# before it counts as failed.
 health_probe_interval_ms = 15000
 health_timeout_ms = 3000
-# Internal state; leave blank.
+# Used by the tool; leave it empty.
 last_running =
 
 # ---- Network ----
-# Softbus = zero-config simulation bus (default). TCPIPSingleAdapter / TCPIPMultipleAdapter = real Ethernet.
+# Softbus = PLCSIM's simulation network, no adapter (default).
+# TCPIPSingleAdapter / TCPIPMultipleAdapter = TCP/IP through the machine's network.
 network_mode = Softbus
-# Host adapter ifIndex + name (only used for TCP/IP modes; pick it from the web UI).
+# Adapter ifIndex and name. Only used by TCPIPMultipleAdapter; pick it on the web page.
 adapter_index = 0
 adapter_name =
 
 # ---- Advanced ----
-# Instance storage layout. "default" uses PLCSIM's native persistent storage (recommended).
+# "default" = PLCSIM's own saved storage, so each PLC keeps its program after a reboot.
+# + New PLC and Delete need this value.
 storage_layout = default
+# How long (ms) to wait for a power-on / power-off, and for RUN / STOP.
 poweron_timeout = 60000
 run_timeout = 60000
-# How long to wait for the PLCSIM runtime manager at startup (seconds).
+# At startup, how long (seconds) to wait for PLCSIM to answer.
 connect_wait_seconds = 120
-# Explicit path to Siemens.Simatic.Simulation.Runtime.Api.x64.dll. Blank = auto-detect the installed PLCSIM Advanced.
+# Full path of Siemens.Simatic.Simulation.Runtime.Api.x64.dll. Empty = find the installed PLCSIM Advanced.
 api_dll_path =
-# Log file path. Blank = autostart.log next to the executable.
+# Log file path. Empty = autostart.log next to PlcsimAutoStart.exe.
 log =

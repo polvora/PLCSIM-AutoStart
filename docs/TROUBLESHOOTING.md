@@ -1,34 +1,107 @@
 # Troubleshooting
 
-Check the log first:
+Look at the log first. It is `autostart.log`, next to `PlcsimAutoStart.exe`:
 ```powershell
 Get-Content .\autostart.log -Tail 40 -Wait
 ```
+The Windows Service writes its own log, `service.log`, in the same folder.
 
-## "runtime OFF" / runtime manager not reachable
+## The page doesn't open after restarting the service
+`service.log` shows *"Web app not started yet: waiting for a user signed in at the machine's console"*.
+Older versions write *"Waiting for an interactive session … (no user logged on (err 1008))"*.
+
+The service starts the web app only in the session of the user signed in at the machine's console. If
+that user's session is a disconnected Remote Desktop session, the service keeps waiting and the page stays
+down. Restart the machine: auto-logon signs the user in at the console, and the service starts the app.
+
+## The header says "PLCSIM not responding"
 - Is **S7-PLCSIM Advanced** installed?
-- The service must run in a **logged-in Windows session** (a signed-in desktop, not the hidden SYSTEM
-  account). If it started as SYSTEM, reinstall so the task runs as your user at logon.
-- Log says `API DLL: NOT FOUND`? Set `api_dll_path` in `appconfig.txt` (or the `PLCSIM_API_DLL` env var)
-  to `Siemens.Simatic.Simulation.Runtime.Api.x64.dll`, then restart.
+- The app must run in the session of a signed-in user, not as the hidden SYSTEM account. If you installed it
+  some other way, reinstall with `Install.cmd`.
+- Does the log say `API DLL: NOT FOUND`? Set `api_dll_path` in `appconfig.txt` (or the `PLCSIM_API_DLL`
+  environment variable) to the full path of `Siemens.Simatic.Simulation.Runtime.Api.x64.dll`, then restart
+  the service.
 
-## `-48 CommunicationInterfaceNotAvailable` / `NetInterfaces = 0`
-PLCSIM can't do networking from the hidden SYSTEM context — it needs a **logged-in session**.
-- Reinstall with `scripts\install.ps1` (runs as your user at logon).
-- For unattended boot, enable auto-logon (`scripts\setup-autologon.ps1`).
-- If networking stays stuck, end `s7opnsim.exe` / `S7SimHost.exe` (or reboot) to release the virtual switch.
+## `-48 CommunicationInterfaceNotAvailable` or `NetInterfaces = 0`
+PLCSIM can't do networking from the hidden SYSTEM account; it needs a signed-in user.
+- Reinstall with `Install.cmd`.
+- For unattended boot, turn on auto-logon (`scripts\setup-autologon.ps1`).
+- If networking stays stuck, end `s7opnsim.exe` and `S7SimHost.exe` (or restart the machine) to release
+  the PLCSIM virtual switch.
 
-## PLC powers on but stays in STOP / "has NO program"
-Error `IsEmpty (-52)`: no program. **Download it once from TIA Portal.** With `storage_layout = default`
-it's stored on disk and survives reboots.
+## A PLC powers on but stays in STOP ("has no program")
+The PLC has no program. **Download your project to it from TIA Portal.** With `storage_layout = default`
+the program is saved on disk and is still there after a reboot.
+
+## The page doesn't let me power on another PLC
+The **Max. powered on at once** limit is reached. Power a PLC off, or raise the limit.
+
+Before you raise it, make sure the machine can run that many PLCs at once. On a 2-vCPU VM, a second PLC
+froze the whole machine. See [Capacity](../README.md#capacity-how-many-plcs-this-machine-can-run).
+
+## The machine froze after powering on another PLC
+Power that PLC off from the page. On a 2-vCPU VM the page barely responded, but powering the PLC off from it
+worked and the machine recovered. Then set **Max. powered on at once** back to a number the machine can run.
+
+If the page doesn't respond at all, restart the machine from outside it (for example from the Azure
+portal).
+
+## The official PLCSIM control panel says "no connection to PLCSIM Advanced"
+While this tool is connected to PLCSIM, the control panel can't connect. Click **Enter maintenance mode**
+on the page: it disconnects this tool from PLCSIM without stopping the service. **It powers off the PLCs
+this tool powered on.** Click **Resume** when you are done.
+
+You don't need maintenance mode to:
+- download a project from TIA Portal over TCP/IP: that works while this tool runs;
+- create or delete a PLC: use **+ New PLC** and **Delete** on the page.
+
+## "PLCSIM already has saved data under the name …" when creating a PLC
+PLCSIM saves each PLC's data in a folder named after the PLC, and that folder is shared by all workspaces.
+A folder with that name already has data, maybe from a PLC in another workspace, so the tool doesn't reuse
+or erase it. Choose another name.
+
+## TIA Portal refuses to download a project with a different CPU
+TIA Portal only downloads to a PLC whose CPU type matches the project, or is unspecified. A PLC keeps the CPU
+type of the last project downloaded to it. Click **Erase program** on that PLC: it powers the PLC off and
+erases its program and hardware configuration (no backup), so its CPU type becomes unspecified. Then power
+it on and download your project from TIA Portal.
+
+## Can't set a PLC's IP
+Power the PLC on first, then click **Set IP…**. The tool saves the IP and sets it again every time the PLC
+is powered on.
+
+## A PLC powers off by itself after a while
+What you see: the PLC's diagnostic buffer shows an orderly "Shut down" (RUN to OFF), the PLC's process ended
+with exit code 0, and `autostart.log` has no **POWEROFF** line for it.
+
+- **Version 1.0.0 caused this.** PLCSIM powers a PLC off when the program that powered it on lets go of its
+  connection to it. Version 1.0.0 opened a new connection on every status refresh and never kept the one it
+  powered the PLC on with. When .NET cleaned that connection up, minutes or hours later (sooner while the
+  page was open), PLCSIM powered the PLC off. Newer versions keep one connection per PLC while the app runs.
+- **This is still expected when the app stops.** Stopping or restarting the `PLCSIM AutoStart` service, or
+  ending `PlcsimAutoStart.exe`, powers off the PLCs it powered on. Auto-start powers them on again when the
+  app comes back.
+- **A different case:** RUN to STOP, and then the PLC restarts by itself within seconds. Check whether TIA
+  Portal was downloading to that PLC at that moment.
+
+## The network mode shows Softbus, or "didn't persist"
+Your setting in `appconfig.txt` **is** kept across reboots. Two things to know:
+- When no PLC is on, PLCSIM switches its live network mode back to Softbus. The tool sets your mode again
+  when it starts and before it powers on a PLC, so PLCs come up in the right mode.
+- A **fresh install** creates a new `appconfig.txt` with Softbus, because the settings file isn't in the
+  ZIP. Choose your network mode on the page again after reinstalling.
+
+## Red "SAFE MODE" banner
+In several boots in a row the machine didn't stay responsive after auto-start, so the tool skipped
+auto-start this time on purpose. If the machine can't run that many PLCs at once, lower the **auto-start
+cap**. Then click **Re-enable auto-start**.
 
 ## Port already in use / `HttpListenerException`
-Something else owns port 8090. Change `http_prefix` in `appconfig.txt` (service stopped) or pass `-Port`
-to the installer.
+Another program uses port 8090. Stop the service, change `http_prefix` in `appconfig.txt`, and start it
+again. Or reinstall with `scripts\install.ps1 -Port <number>`.
 
-## `Access is denied` binding to the LAN
-Binding to `http://+:8090/` needs a URL reservation. The installer adds it automatically; by hand
-(elevated):
+## `Access is denied` when listening on the network
+Listening on `http://+:8090/` needs a URL reservation. The installer adds it. To add it by hand (elevated):
 ```powershell
 netsh http add urlacl url=http://+:8090/ user="DOMAIN\User"
 ```
@@ -41,54 +114,3 @@ Get-Process PlcsimAutoStart | Stop-Process -Force
 .\scripts\build.ps1
 Start-Service "PLCSIM AutoStart"           # or: Start-ScheduledTask -TaskName "PLCSIM AutoStart"
 ```
-
-## Red "SAFE MODE" banner
-Several boots in a row didn't come up working, so the tool skipped auto-start on purpose. If the machine
-is overloaded, lower the **auto-start cap** (`hard_max_powered_on`), then click **Re-enable auto-start**.
-
-## Official control panel / TIA says "no connection to PLCSIM Advanced"
-The service holds a live connection to the PLCSIM runtime, and the official tools can't connect at the
-same time. Click **Enter maintenance mode** in the UI: it releases PLCSIM so the control panel / TIA can
-connect. **Entering it powers off the PLCs this tool powered on.** Click **Resume** when you're done to
-reconnect. To add or delete a CPU you don't need it: use **+ New CPU** and **Delete** in the UI.
-
-## "There is already saved data for a CPU named …" when creating a CPU
-PLCSIM keeps each CPU's saved data in a folder named after the CPU, shared by all workspaces. A folder
-with that name already holds data, maybe from a CPU of another workspace, so the tool doesn't reuse or
-clear it. Choose another name.
-
-## Load a project with a different CPU (TIA rejects it)
-TIA only downloads to a PLCSIM instance whose CPU matches the project (or is unspecified). Because this
-tool keeps each instance's program in PLCSIM's persistent storage, the instance keeps its old CPU. Click
-**Wipe CPU** on that instance: it powers off and permanently clears the stored program (no backup) so the
-instance is a blank/unspecified CPU. Then download your project from TIA.
-
-## A second PLC won't power on
-The limiter. Raise **Max powered on** in the UI (it can't exceed `hard_max_powered_on`) or power one off.
-
-## Can't change a PLC's IP
-The PLC must be **powered on** first, then use the **IP…** button. The IP is re-applied on every
-power-on. If the TIA program defines its own IP, that applies too.
-
-## An instance powers off by itself after a while
-The symptom is an orderly "Shut down" (RUN to OFF) in the diagnostic buffer, an instance process exit
-code of 0, and no **POWEROFF** line in `autostart.log`.
-
-- **Version 1.0.0 caused this.** The PLCSIM Runtime Manager shuts an instance down when the API client
-  that powered it on releases that interface. 1.0.0 created a new interface on every status request
-  and never kept it, so whenever the .NET garbage collector finalized the one used for power-on, the
-  Runtime Manager powered the PLC off. That could happen minutes or hours later, and sooner while the
-  web UI was open. Newer versions keep one interface per instance for the life of the process.
-- **This is still expected when the app stops.** Stopping or restarting the `PLCSIM AutoStart` service,
-  or killing `PlcsimAutoStart.exe`, powers off the PLCs it started. Auto-start powers them on again when
-  the app comes back.
-- **A different case:** RUN to STOP followed by the instance restarting by itself within seconds. Check
-  whether TIA Portal was downloading to that PLC at that moment.
-
-## Network mode looks like Softbus / "didn't persist"
-Your setting in `appconfig.txt` **does** persist across reboots. Two things to know:
-- The PLCSIM runtime reverts its live `NetworkMode` to Softbus when idle (no instances on). The tool
-  re-applies your configured mode at startup and before powering on an instance, so PLCs still come up
-  in the right mode.
-- A **fresh re-install** creates a new `appconfig.txt` (network defaults to Softbus), because the
-  config isn't shipped in the ZIP. Re-pick your network mode in the UI after a reinstall.

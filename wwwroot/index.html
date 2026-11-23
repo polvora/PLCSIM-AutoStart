@@ -64,7 +64,7 @@
 <body>
 <header>
   <h1>🔄 PLCSIM Auto-Start</h1>
-  <span class="pill" id="rt">runtime…</span>
+  <span class="pill" id="rt">PLCSIM…</span>
   <span class="pill" id="net">network…</span>
   <span class="pill" id="onpill">—</span>
   <span style="flex:1"></span>
@@ -75,7 +75,7 @@
   <div id="safebanner" style="display:none;background:#3a1d1d;border:1px solid var(--bad);border-radius:12px;padding:16px 20px">
     <div class="row sp">
       <div>
-        <div style="font-weight:700;color:#ffb4b4;font-size:15px">🛡️ SAFE MODE — auto-start disabled</div>
+        <div style="font-weight:700;color:#ffb4b4;font-size:15px">🛡️ SAFE MODE: auto-start was skipped at this boot</div>
         <div class="note" id="safeReason" style="color:#ffd7d9;margin-top:6px"></div>
       </div>
       <button class="primary" id="safeClear">Re-enable auto-start</button>
@@ -85,8 +85,8 @@
   <div id="maintbanner" style="display:none;background:#13314d;border:1px solid #2a6cad;border-radius:12px;padding:16px 20px">
     <div class="row sp">
       <div>
-        <div style="font-weight:700;color:#6db1ff;font-size:15px">🔧 Maintenance mode — PLCSIM released</div>
-        <div class="note" style="color:#cfe3ff;margin-top:6px">The official PLCSIM Advanced control panel / TIA Portal can connect now. PLC control here is paused — click <b>Resume</b> when you are done.</div>
+        <div style="font-weight:700;color:#6db1ff;font-size:15px">🔧 Maintenance mode is on</div>
+        <div class="note" style="color:#cfe3ff;margin-top:6px">This tool is disconnected from PLCSIM, so you can open the official PLCSIM control panel. The PLC buttons on this page are disabled. Click <b>Resume</b> when you are done.</div>
       </div>
       <button class="primary" id="maintResume">Resume</button>
     </div>
@@ -104,69 +104,69 @@
 
   <div class="card">
     <div class="row sp">
-      <h2 style="margin:0">Workspace PLCs</h2>
+      <h2 style="margin:0">PLCs</h2>
       <div class="row">
-        <label class="sub">Max powered on at once:</label>
-        <input id="maxOn" type="number" min="1" max="20" style="width:60px" title="Saves automatically when you change it">
-        <button id="newCpu" title="Create a new blank CPU in this workspace">+ New CPU</button>
+        <label class="sub" for="maxOn">Max. powered on at once:</label>
+        <input id="maxOn" type="number" min="1" max="20" style="width:60px" title="Limit for the buttons on this page. Saved as soon as you change it.">
+        <button id="newCpu" title="Create a blank PLC in this workspace">+ New PLC</button>
       </div>
     </div>
     <div class="note warn" id="limitNote" style="margin-top:10px"></div>
     <table>
-      <thead><tr><th>Instance</th><th>State</th><th style="text-align:right">Actions</th></tr></thead>
+      <thead><tr><th>PLC</th><th>State</th><th style="text-align:right">Actions</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
 
   <div class="card">
-    <h2>Instance auto-start</h2>
-    <div class="note">The <b>service</b> always runs at Windows startup. This controls whether, in addition, one or more PLCs are <b>powered on automatically</b> at boot.</div>
+    <h2>Auto-start at boot</h2>
+    <div class="note">This tool always starts with Windows. Here you choose whether it also <b>powers on PLCs</b> when the machine boots.</div>
     <div class="row" style="margin-top:12px">
       <label class="toggle"><input type="checkbox" id="asEnabled"><span></span></label>
-      <span>Enabled</span>
+      <span>Power on PLCs at boot</span>
       <span style="flex:1"></span>
-      <label class="sub">Mode:</label>
+      <label class="sub" for="asMode">Which:</label>
       <select id="asMode">
-        <option value="last">Whatever was last running</option>
-        <option value="fixed">Fixed instance</option>
+        <option value="last">The PLCs that were on before</option>
+        <option value="fixed">Always this PLC:</option>
       </select>
       <select id="asInstance"></select>
     </div>
     <div class="note" id="asNote" style="margin-top:8px"></div>
     <div class="row warn" style="margin-top:12px">
-      <span>🛡️ Auto-start cap: <b id="hardVal">1</b> PLC(s) powered on at boot</span>
+      <span>🛡️ Auto-start cap: at most <b id="hardVal">1</b> PLC(s) at boot</span>
       <button id="hardChange">Change…</button>
     </div>
   </div>
 
   <div class="card">
-    <h2>Network communication</h2>
+    <h2>Network</h2>
     <div class="row" style="margin-top:4px">
-      <label class="sub">Mode:</label>
+      <label class="sub" for="netMode">Mode:</label>
       <select id="netMode">
-        <option value="Softbus">PLCSIM (Softbus) — default, no adapter</option>
-        <option value="TCPIPMultipleAdapter">TCP/IP Multiple Adapter</option>
-        <option value="TCPIPSingleAdapter">TCP/IP Single Adapter — no adapter choice</option>
+        <option value="Softbus">Softbus (default, no adapter)</option>
+        <option value="TCPIPMultipleAdapter">TCP/IP Multiple Adapter (choose an adapter)</option>
+        <option value="TCPIPSingleAdapter">TCP/IP Single Adapter (no adapter choice)</option>
       </select>
       <span id="adapterWrap" style="display:inline-flex;align-items:center;gap:12px">
-        <label class="sub">Adapter:</label>
+        <label class="sub" for="netAdapter">Adapter:</label>
         <select id="netAdapter" style="min-width:280px"></select>
       </span>
       <button class="primary" id="netSave">Apply</button>
     </div>
-    <div class="note" id="netNote">Softbus needs no setup. Pick a host <b>adapter</b> only in <b>TCP/IP Multiple Adapter</b> mode (the only mode that maps PLCs to a specific NIC); Softbus and Single Adapter don't use it.</div>
+    <div class="note" id="netNote">Softbus needs no setup. Only <b>TCP/IP Multiple Adapter</b> uses the adapter you pick; the other modes ignore it.</div>
   </div>
 
   <div class="card">
-    <h2>Maintenance</h2>
-    <div class="note">This service keeps a live connection to PLCSIM, so the <b>official control panel / TIA Portal can't connect</b> while it runs (the panel shows "no connection to PLCSIM Advanced"). To open them, enter maintenance mode: it releases PLCSIM <b>without stopping this service</b>. <b>Entering it powers off the PLCs this tool powered on.</b></div>
+    <h2>Maintenance mode</h2>
+    <div class="note">While this tool is connected to PLCSIM, the official PLCSIM control panel can't connect (it shows "no connection to PLCSIM Advanced"). Maintenance mode disconnects this tool from PLCSIM without stopping the service. <b>It powers off the PLCs this tool powered on.</b></div>
     <div class="row" style="margin-top:12px">
-      <button id="maintEnter">🔧 Enter maintenance mode (to open the official GUI)</button>
+      <button id="maintEnter">🔧 Enter maintenance mode</button>
     </div>
   </div>
 
   <div class="card">
-    <div class="note warn">⚠️ No authentication — intended for <b>trusted, closed networks</b> (the typical PLCSIM lab/VM setup). Anyone who can reach this page can power PLCs on/off. Don't place it on an untrusted network or expose it to the internet.</div>
+    <div class="note warn">⚠️ No login: anyone who can open this page can power PLCs on and off. Use it only on a <b>trusted, closed network</b>, never on the internet.</div>
   </div>
 </main>
 
@@ -175,50 +175,48 @@
 <div id="modalBg">
   <div class="modal">
     <h3>⚠️ Change the auto-start cap</h3>
-    <p>This is the <b>maximum number of PLCs that auto-start powers on automatically after a reboot</b>.</p>
+    <p>The auto-start cap is the <b>most PLCs that auto-start powers on when the machine boots</b>.</p>
     <div class="danger-box">
-      Set it higher than this machine can run <b>at the same time</b> and it <b>can freeze</b> when those
-      PLCs start. And since auto-start runs on <b>every</b> reboot, that can turn into a
-      <b>freeze → reboot → freeze loop</b> (a built-in loop-breaker stops it after a couple of failed
-      boots, but the machine is unusable until then). Only raise it to a number you are <b>confident</b>
-      this machine can run at once.
+      If it is higher than the machine can run at once, the machine can <b>freeze</b> while those PLCs
+      start. Auto-start runs on <b>every</b> boot, so it can freeze again after each restart. A built-in
+      loop-breaker turns auto-start off after a few failed boots in a row, but until then the machine is
+      unusable. Only raise it if you are sure the machine can run that many PLCs at once.
     </div>
     <div class="mrow">
-      <label class="sub">New cap:</label>
+      <label class="sub" for="hardModalInput">New cap:</label>
       <input id="hardModalInput" type="number" min="1" max="20">
       <button id="hardCancel">Cancel</button>
-      <button class="danger" id="hardConfirm">Apply cap</button>
+      <button class="danger" id="hardConfirm">Apply</button>
     </div>
   </div>
 </div>
 
 <div id="wipeBg">
   <div class="modal">
-    <h3>Wipe CPU — <span id="wipeName"></span></h3>
-    <p>This clears the program and hardware configuration saved for this instance, so it comes back as a
-    <b>blank (unspecified) CPU</b>. Use it to load a project with a <b>different CPU</b> from TIA Portal.</p>
+    <h3>Erase program — <span id="wipeName"></span></h3>
+    <p>Erases the program and hardware configuration saved in this PLC. The PLC stays in the list as a
+    <b>blank PLC</b> (CPU type unspecified), so TIA Portal can download a project with a <b>different CPU</b>.</p>
     <div class="danger-box">
-      The instance is <b>powered off</b> and its stored program is <b>permanently cleared</b> — no backup
-      is kept. The saved IP is cleared too. After this, download your project from TIA; it can be a
-      different CPU. This does not delete the instance, only empties its stored program.
+      The PLC is powered off first. Its saved IP is removed too. Nothing is backed up and this
+      <b>can't be undone</b>.
     </div>
     <div class="mrow">
       <button id="wipeCancel">Cancel</button>
-      <button class="danger" id="wipeConfirm">Wipe CPU</button>
+      <button class="danger" id="wipeConfirm">Erase program</button>
     </div>
   </div>
 </div>
 
 <div id="newBg">
   <div class="modal plain">
-    <h3>New CPU</h3>
-    <p>Creates a new virtual CPU in this workspace as a <b>blank (unspecified) CPU</b>. Then power it on
+    <h3>New PLC</h3>
+    <p>Creates a <b>blank PLC</b> in this workspace: no program, CPU type unspecified. Next, power it on
     and download your project from TIA Portal.</p>
     <div class="mrow" style="justify-content:flex-start">
       <label class="sub" for="newName">Name:</label>
       <input id="newName" class="wide" maxlength="64" placeholder="e.g. LINE-2" autocomplete="off" spellcheck="false">
     </div>
-    <div class="note">Up to 64 letters, digits, '-' or '_'.</div>
+    <div class="note">Letters, digits, - and _ only (up to 64).</div>
     <div class="mrow">
       <button id="newCancel">Cancel</button>
       <button class="primary" id="newConfirm">Create</button>
@@ -228,15 +226,15 @@
 
 <div id="delBg">
   <div class="modal">
-    <h3>Delete CPU — <span id="delName"></span></h3>
-    <p>This removes the virtual CPU from this workspace and from PLCSIM.</p>
+    <h3>Delete PLC — <span id="delName"></span></h3>
+    <p>Removes this PLC from the workspace and from PLCSIM.</p>
     <div class="danger-box">
-      Its stored program and hardware configuration are <b>permanently deleted</b> — no backup is kept.
-      This cannot be undone.
+      Its saved program and hardware configuration are deleted. Nothing is backed up and this
+      <b>can't be undone</b>.
     </div>
     <div class="mrow">
       <button id="delCancel">Cancel</button>
-      <button class="danger" id="delConfirm">Delete CPU</button>
+      <button class="danger" id="delConfirm">Delete PLC</button>
     </div>
   </div>
 </div>
@@ -245,7 +243,7 @@
 const $ = s => document.querySelector(s);
 let S = null, busy = false, netDirty = false;
 
-function toast(msg, ok){ const t=$('#toast'); t.textContent=msg; t.className='show '+(ok?'ok':'bad'); setTimeout(()=>t.className='',2600); }
+function toast(msg, ok){ const t=$('#toast'); t.textContent=msg; t.className='show '+(ok?'ok':'bad'); setTimeout(()=>t.className='',4000); }
 async function api(ep, body){
   const o = { method: body?'POST':'GET', headers:{'Content-Type':'application/json'} };
   if(body) o.body = JSON.stringify(body);
@@ -259,7 +257,7 @@ async function act(ep, name){
 }
 
 async function changeIp(name, current){
-  const ip = prompt(`New IP for ${name} (must be on the same subnet your PLCs/clients use):`, current||'192.168.0.10');
+  const ip = prompt(`IP address for ${name} (same subnet as the machines that talk to it):`, current||'192.168.0.10');
   if(!ip) return;
   const mask = prompt('Subnet mask:', '255.255.255.0'); if(mask===null) return;
   const gw = prompt('Gateway (0.0.0.0 if none):', '0.0.0.0'); if(gw===null) return;
@@ -271,25 +269,35 @@ async function changeIp(name, current){
 
 function badge(state){ return `<span class="badge b-${state}">${state}</span>`; }
 
+function cpuLabel(t){ return /Unspecified/i.test(t) ? 'blank (CPU type unspecified)' : t; }
+
+function details(it){
+  const parts = [];
+  if(it.configured && it.plcName) parts.push(it.plcName);
+  if(it.ip) parts.push('IP '+it.ip);
+  if(it.cpuType) parts.push(cpuLabel(it.cpuType));
+  if(it.inWorkspace===false) parts.push('not in this workspace');
+  return parts.join(' · ');
+}
+
 function renderRows(){
   const tb=$('#rows'); tb.innerHTML='';
   const onList = S.poweredOnList||[];
   const max = S.maxPoweredOn||1;
   const atLimit = onList.length >= max;
-  const maint = !!S.maintenance;   // PLC control is paused while the runtime is released
+  const maint = !!S.maintenance;   // the PLC buttons are disabled while this tool is disconnected from PLCSIM
   for(const it of S.instances){
     const tr=document.createElement('tr');
     // Blocked only if this PLC is off and the power-on limit is already reached.
     const blocked = !it.poweredOn && atLimit;
-    const active = onList.includes(it.name);
-    // Start only powers on / runs a stopped or off PLC. If it's already running this would be a no-op,
-    // so disable it (to restart, STOP it first; the IP has its own button).
+    // Already in RUN: nothing to do (to restart it, STOP it first).
     const startDisabled = blocked || maint || it.running;
-    const startTitle = (blocked && !maint) ? `title="Limit of ${max} powered on reached; power one off first"`
-                     : (it.running ? `title="Already running — STOP it first to restart"` : '');
+    const startTitle = (blocked && !maint) ? `title="Limit reached: ${onList.length} of ${max} powered on. Power one off first."`
+                     : (it.running ? `title="Already in RUN"` : '');
+    const offTitle = (!it.poweredOn && !maint) ? 'title="Power it on first"' : '';
     tr.innerHTML = `
-      <td><div class="name">${it.name}</div><div class="sub">${it.plcName||''}${it.ip?` · IP ${it.ip}`:''}${it.cpuType?` · ${cpuLabel(it.cpuType)}`:''}${it.configured?'':' · not configured'}</div></td>
-      <td>${badge(it.state)}${active?' <span class="sub">◀ active</span>':''}</td>
+      <td><div class="name">${it.name}</div><div class="sub">${details(it)}</div></td>
+      <td>${badge(it.state)}</td>
       <td><div class="actions">
         <div class="actrow">
           <button class="primary" data-a="start" data-n="${it.name}" ${startDisabled?'disabled':''} ${startTitle}>Power on + RUN</button>
@@ -297,9 +305,9 @@ function renderRows(){
           <button class="danger" data-a="poweroff" data-n="${it.name}" ${(it.poweredOn&&!maint)?'':'disabled'}>Power off</button>
         </div>
         <div class="actrow">
-          <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${(it.poweredOn&&!maint)?'':'disabled'}>Set IP…</button>
-          <button data-w="${it.name}" ${maint?'disabled':''} title="Clear the saved program so TIA can load a different CPU">Wipe CPU</button>
-          <button class="danger" data-d="${it.name}" ${(maint||it.poweredOn)?'disabled':''} title="${it.poweredOn?'Power it off first':'Delete this CPU permanently'}">Delete</button>
+          <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${(it.poweredOn&&!maint)?'':'disabled'} ${offTitle}>Set IP…</button>
+          <button data-w="${it.name}" ${maint?'disabled':''} title="Erase the saved program so TIA Portal can download a project with a different CPU">Erase program</button>
+          <button class="danger" data-d="${it.name}" ${(maint||it.poweredOn)?'disabled':''} title="${it.poweredOn?'Power it off first':'Delete this PLC'}">Delete</button>
         </div>
       </div></td>`;
     tb.appendChild(tr);
@@ -312,53 +320,55 @@ function renderRows(){
   tb.querySelectorAll('button[data-d]').forEach(b=>{ b.onclick=()=>openDelete(b.dataset.d); });
 }
 
-function cpuLabel(t){ return /Unspecified/i.test(t) ? 'unspecified (blank)' : t; }
-
 function renderControls(){
   const maint = !!S.maintenance;
   // header pills
-  $('#rt').textContent = maint ? 'maintenance' : (S.runtime?'runtime OK':'runtime OFF');
+  $('#rt').textContent = maint ? 'Maintenance mode' : (S.runtime?'PLCSIM connected':'PLCSIM not responding');
   $('#rt').className = 'pill '+(maint ? '' : (S.runtime?'ok':'bad'));
   $('#net').textContent = S.network.mode + (S.network.adapterName? ' · '+S.network.adapterName : '');
-  const onList = S.poweredOnList||[], max = S.maxPoweredOn||1, hard = S.hardMaxPoweredOn||max;
-  $('#onpill').textContent = 'Powered on: '+onList.length+'/'+max;
+  const onList = S.poweredOnList||[], max = S.maxPoweredOn||1, hard = S.hardMaxPoweredOn||1;
+  $('#onpill').textContent = 'Powered on: '+onList.length+' (limit '+max+')';
   $('#onpill').className = 'pill '+(onList.length?'ok':'');
 
   // safe-mode banner
   const sb=$('#safebanner');
-  if(S.safeMode){ sb.style.display=''; $('#safeReason').textContent = S.safeModeReason||'Auto-start disabled.'; }
+  if(S.safeMode){ sb.style.display=''; $('#safeReason').textContent = S.safeModeReason||''; }
   else sb.style.display='none';
 
-  // maintenance banner + control
+  // maintenance banner + controls
   $('#maintbanner').style.display = maint ? '' : 'none';
   $('#maintEnter').disabled = maint;
   $('#netSave').disabled = maint;
   $('#newCpu').disabled = maint;
 
-  // limit (the web UI never exceeds the hard safety cap)
+  // power-on limit for the buttons on this page (it can be set above the auto-start cap)
   const mo=$('#maxOn'); if(document.activeElement!==mo) mo.value = max;
-  $('#limitNote').innerHTML = (max===1
-    ? 'Rule: only <b>1 PLC powered on</b> at a time. Powering on another is <b>blocked</b> — power the active one off first.'
-    : `Rule: at most <b>${max} PLCs powered on</b> at a time. Once the limit is reached, powering on another is <b>blocked</b> until you power one off.`);
+  let lim = (max===1
+    ? 'Only <b>1 PLC</b> can be powered on at a time.'
+    : `Up to <b>${max} PLCs</b> can be powered on at a time.`);
+  if(max > hard) lim += `<br>This is more than the auto-start cap (${hard}). A running PLC can use a full CPU core, so only raise this limit if the machine can run ${max} PLCs at once.`;
+  $('#limitNote').innerHTML = lim;
 
   // workspace dropdown
   const ws=$('#ws'); if(document.activeElement!==ws){ ws.innerHTML='';
     for(const w of S.workspaces){ const o=document.createElement('option'); o.value=w.name; o.textContent=w.name; o.selected=w.current; ws.appendChild(o);} }
 
-  // autostart
+  // auto-start
   $('#asEnabled').checked = S.autostart.enabled;
   const mode = S.autostart.mode||'last';
   if(document.activeElement!==$('#asMode')) $('#asMode').value = mode;
   const ai=$('#asInstance'); ai.style.display = (mode==='fixed')?'':'none';
   if(document.activeElement!==ai){ ai.innerHTML='';
     for(const it of S.instances){ const o=document.createElement('option'); o.value=it.name; o.textContent=it.name; o.selected=it.name===S.autostart.instance; ai.appendChild(o);} }
-  const last=(S.autostart.last||[]);
-  $('#asNote').innerHTML = (mode==='fixed')
-    ? 'At server startup it will always start the selected fixed instance.'
-    : ('At server startup it will restore <b>whatever was powered on</b> last time'+(last.length?': <b>'+last.join(', ')+'</b>':' (right now: none)')+'.');
+  const atBoot = (S.autostart.last||[]).slice(0, hard);   // auto-start powers on at most `hard` of them
+  let asText;
+  if(!S.autostart.enabled) asText = 'Off: no PLC is powered on at boot.';
+  else if(mode==='fixed') asText = 'At boot it powers on <b>'+(S.autostart.instance||'(no PLC selected)')+'</b>.';
+  else asText = 'At boot it powers on the PLCs that were on before. Right now that is: <b>'+(atBoot.length?atBoot.join(', '):'none')+'</b>.';
+  $('#asNote').innerHTML = asText;
   $('#hardVal').textContent = hard;
 
-  // network (don't clobber an unapplied selection: skip while the user has changes pending)
+  // network (don't overwrite a selection the user hasn't applied yet)
   if(!netDirty && document.activeElement!==$('#netMode')) $('#netMode').value = S.network.mode;
   $('#adapterWrap').style.display = ($('#netMode').value==='TCPIPMultipleAdapter') ? 'inline-flex' : 'none';
 }
@@ -370,13 +380,13 @@ async function loadAdapters(){
   sel.innerHTML='';
   for(const a of (r.adapters||[])){
     const o=document.createElement('option'); o.value=a.index;
-    o.textContent = `${a.name} — ${a.description}`+(a.bound?' (bound)':'');
+    o.textContent = `${a.name} — ${a.description}`+(a.bound?' (bound to PLCSIM)':'');
     o.dataset.name=a.name; o.selected=(a.index==S.network.adapterIndex); sel.appendChild(o);
   }
 }
 
 async function load(){
-  try{ S = await api('status'); }catch(e){ $('#rt').textContent='no connection'; $('#rt').className='pill bad'; return; }
+  try{ S = await api('status'); }catch(e){ $('#rt').textContent='Service not responding'; $('#rt').className='pill bad'; return; }
   renderControls(); renderRows();
 }
 
@@ -386,11 +396,11 @@ async function saveAutostart(){ const r=await api('autostart',{enabled:$('#asEna
 $('#asEnabled').onchange = saveAutostart;
 $('#asInstance').onchange = saveAutostart;
 $('#asMode').onchange = () => { $('#asInstance').style.display = ($('#asMode').value==='fixed')?'':'none'; saveAutostart(); };
-// operational limit: save on commit (blur/Enter) so the 3s refresh never reverts an edit
+// power-on limit: saved on change (blur/Enter) so the 3 s refresh never reverts an edit
 async function saveMax(){ const r=await api('limit',{max:Number($('#maxOn').value)||1}); toast(r.message,r.ok); await load(); }
 $('#maxOn').onchange = saveMax;
 
-// auto-start cap: only via the warning modal (not edited inline)
+// auto-start cap: only through the warning dialog
 $('#hardChange').onclick = () => { $('#hardModalInput').value = (S&&S.hardMaxPoweredOn)||1; $('#modalBg').classList.add('show'); $('#hardModalInput').focus(); };
 $('#hardCancel').onclick = () => $('#modalBg').classList.remove('show');
 $('#modalBg').onclick = e => { if(e.target===$('#modalBg')) $('#modalBg').classList.remove('show'); };
@@ -400,7 +410,7 @@ $('#hardConfirm').onclick = async () => {
   const r = await api('autostart-cap', {max: v}); toast(r.message, r.ok); await load();
 };
 
-// wipe CPU: clear the saved program so TIA can load a different CPU (behind a confirmation)
+// erase program: behind a confirmation
 let wipeTarget = null;
 function openWipe(name){ wipeTarget = name; $('#wipeName').textContent = name; $('#wipeBg').classList.add('show'); }
 $('#wipeCancel').onclick = () => $('#wipeBg').classList.remove('show');
@@ -410,7 +420,7 @@ $('#wipeConfirm').onclick = async () => {
   const r = await api('wipe-cpu', {name}); toast(r.message, r.ok); await load();
 };
 
-// new CPU: name it, then the backend registers it in PLCSIM and adds it to the workspace
+// new PLC: the backend registers it in PLCSIM and adds it to the workspace
 function openNew(){ $('#newName').value=''; $('#newBg').classList.add('show'); $('#newName').focus(); }
 $('#newCpu').onclick = openNew;
 $('#newCancel').onclick = () => $('#newBg').classList.remove('show');
@@ -425,7 +435,7 @@ async function createCpu(){
 $('#newConfirm').onclick = createCpu;
 $('#newName').onkeydown = e => { if(e.key==='Enter') createCpu(); else if(e.key==='Escape') $('#newBg').classList.remove('show'); };
 
-// delete CPU: only while powered off, behind a confirmation
+// delete PLC: only while powered off, behind a confirmation
 let delTarget = null;
 function openDelete(name){ delTarget = name; $('#delName').textContent = name; $('#delBg').classList.add('show'); }
 $('#delCancel').onclick = () => $('#delBg').classList.remove('show');
@@ -440,9 +450,9 @@ $('#delConfirm').onclick = async () => {
 
 $('#safeClear').onclick = async () => { const r=await api('clear-safemode',{}); toast(r.message,r.ok); await load(); };
 
-// maintenance mode: explicitly release PLCSIM so the official control panel / TIA can connect
+// maintenance mode: disconnect from PLCSIM so the official control panel can connect
 $('#maintEnter').onclick = async () => {
-  if(!confirm('Enter maintenance mode?\n\nThis releases PLCSIM so the official control panel / TIA Portal can connect. It powers off the PLCs this tool powered on. PLC control here is paused until you click Resume.')) return;
+  if(!confirm('Enter maintenance mode?\n\n• This tool disconnects from PLCSIM, so the official PLCSIM control panel can connect.\n• The PLCs this tool powered on are powered off.\n• The PLC buttons on this page stay disabled until you click Resume.')) return;
   const r=await api('maintenance',{enabled:true}); toast(r.message,r.ok); await load();
 };
 $('#maintResume').onclick = async () => { const r=await api('maintenance',{enabled:false}); toast(r.message,r.ok); await load(); };

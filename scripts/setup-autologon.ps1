@@ -66,4 +66,4 @@ if ($auto) {
 
 $plain = $null
 Write-Host ""
-Write-Host "Reboot to verify the machine logs on automatically and the PLCSIM AutoStart task starts."
+Write-Host "Restart the machine to check that Windows signs this account in by itself and the PLCSIM AutoStart page opens."
