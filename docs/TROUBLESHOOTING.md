@@ -48,16 +48,20 @@ is overloaded, lower the **auto-start cap** (`hard_max_powered_on`), then click 
 
 ## Official control panel / TIA says "no connection to PLCSIM Advanced"
 The service holds a live connection to the PLCSIM runtime, and the official tools can't connect at the
-same time. Don't stop the service — click **Enter maintenance mode** in the UI. It releases PLCSIM so the
-control panel / TIA can connect, e.g. to **add a new instance**.
-Click **Resume** when you're done to reconnect.
+same time. Click **Enter maintenance mode** in the UI: it releases PLCSIM so the control panel / TIA can
+connect. **Entering it powers off the PLCs this tool powered on.** Click **Resume** when you're done to
+reconnect. To add or delete a CPU you don't need it: use **+ New CPU** and **Delete** in the UI.
+
+## "There is already saved data for a CPU named …" when creating a CPU
+PLCSIM keeps each CPU's saved data in a folder named after the CPU, shared by all workspaces. A folder
+with that name already holds data, maybe from a CPU of another workspace, so the tool doesn't reuse or
+clear it. Choose another name.
 
 ## Load a project with a different CPU (TIA rejects it)
 TIA only downloads to a PLCSIM instance whose CPU matches the project (or is unspecified). Because this
 tool keeps each instance's program in PLCSIM's persistent storage, the instance keeps its old CPU. Click
 **Wipe CPU** on that instance: it powers off and permanently clears the stored program (no backup) so the
-instance is a blank/unspecified CPU. Then download your project from TIA. If TIA can't connect while the
-service runs, enter **maintenance mode** for the download.
+instance is a blank/unspecified CPU. Then download your project from TIA.
 
 ## A second PLC won't power on
 The limiter. Raise **Max powered on** in the UI (it can't exceed `hard_max_powered_on`) or power one off.

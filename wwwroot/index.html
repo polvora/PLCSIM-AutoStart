@@ -48,14 +48,17 @@
   #toast.ok{border-color:#1c5}#toast.bad{border-color:#a33}
   .note{font-size:13px;color:var(--mut);margin-top:4px}
   .warn{color:var(--stop)}
-  #modalBg,#wipeBg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
-  #modalBg.show,#wipeBg.show{display:flex}
+  #modalBg,#wipeBg,#newBg,#delBg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+  #modalBg.show,#wipeBg.show,#newBg.show,#delBg.show{display:flex}
   .modal{background:var(--card);border:1px solid var(--bad);border-radius:12px;max-width:560px;width:92%;padding:22px 24px}
   .modal h3{margin:0 0 12px;color:#ffb4b4;font-size:17px}
   .modal p{font-size:14px;line-height:1.55;margin:0 0 12px}
   .modal .danger-box{background:#3a1d1d;border:1px solid var(--bad);border-radius:8px;padding:12px 14px;margin:0 0 16px;color:#ffd7d9;font-size:13px;line-height:1.55}
   .modal .mrow{display:flex;align-items:center;gap:12px;justify-content:flex-end;margin-top:6px}
   .modal input{width:70px}
+  .modal.plain{border-color:var(--line)}
+  .modal.plain h3{color:var(--fg)}
+  .modal input.wide{width:100%}
 </style>
 </head>
 <body>
@@ -105,6 +108,7 @@
       <div class="row">
         <label class="sub">Max powered on at once:</label>
         <input id="maxOn" type="number" min="1" max="20" style="width:60px" title="Saves automatically when you change it">
+        <button id="newCpu" title="Create a new blank CPU in this workspace">+ New CPU</button>
       </div>
     </div>
     <div class="note warn" id="limitNote" style="margin-top:10px"></div>
@@ -155,7 +159,7 @@
 
   <div class="card">
     <h2>Maintenance</h2>
-    <div class="note">This service keeps a live connection to PLCSIM, so the <b>official control panel / TIA Portal can't connect</b> while it runs (the panel shows "no connection to PLCSIM Advanced"). To open them — e.g. to <b>add a new instance</b> — enter maintenance mode: it releases PLCSIM <b>without stopping this service</b>.</div>
+    <div class="note">This service keeps a live connection to PLCSIM, so the <b>official control panel / TIA Portal can't connect</b> while it runs (the panel shows "no connection to PLCSIM Advanced"). To open them, enter maintenance mode: it releases PLCSIM <b>without stopping this service</b>. <b>Entering it powers off the PLCs this tool powered on.</b></div>
     <div class="row" style="margin-top:12px">
       <button id="maintEnter">🔧 Enter maintenance mode (to open the official GUI)</button>
     </div>
@@ -201,6 +205,38 @@
     <div class="mrow">
       <button id="wipeCancel">Cancel</button>
       <button class="danger" id="wipeConfirm">Wipe CPU</button>
+    </div>
+  </div>
+</div>
+
+<div id="newBg">
+  <div class="modal plain">
+    <h3>New CPU</h3>
+    <p>Creates a new virtual CPU in this workspace as a <b>blank (unspecified) CPU</b>. Then power it on
+    and download your project from TIA Portal.</p>
+    <div class="mrow" style="justify-content:flex-start">
+      <label class="sub" for="newName">Name:</label>
+      <input id="newName" class="wide" maxlength="64" placeholder="e.g. LINE-2" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="note">Up to 64 letters, digits, '-' or '_'.</div>
+    <div class="mrow">
+      <button id="newCancel">Cancel</button>
+      <button class="primary" id="newConfirm">Create</button>
+    </div>
+  </div>
+</div>
+
+<div id="delBg">
+  <div class="modal">
+    <h3>Delete CPU — <span id="delName"></span></h3>
+    <p>This removes the virtual CPU from this workspace and from PLCSIM.</p>
+    <div class="danger-box">
+      Its stored program and hardware configuration are <b>permanently deleted</b> — no backup is kept.
+      This cannot be undone.
+    </div>
+    <div class="mrow">
+      <button id="delCancel">Cancel</button>
+      <button class="danger" id="delConfirm">Delete CPU</button>
     </div>
   </div>
 </div>
@@ -263,6 +299,7 @@ function renderRows(){
         <div class="actrow">
           <button data-a="setip" data-n="${it.name}" data-ip="${it.ip||''}" ${(it.poweredOn&&!maint)?'':'disabled'}>Set IP…</button>
           <button data-w="${it.name}" ${maint?'disabled':''} title="Clear the saved program so TIA can load a different CPU">Wipe CPU</button>
+          <button class="danger" data-d="${it.name}" ${(maint||it.poweredOn)?'disabled':''} title="${it.poweredOn?'Power it off first':'Delete this CPU permanently'}">Delete</button>
         </div>
       </div></td>`;
     tb.appendChild(tr);
@@ -272,6 +309,7 @@ function renderRows(){
     else b.onclick=()=>act(b.dataset.a, b.dataset.n);
   });
   tb.querySelectorAll('button[data-w]').forEach(b=>{ b.onclick=()=>openWipe(b.dataset.w); });
+  tb.querySelectorAll('button[data-d]').forEach(b=>{ b.onclick=()=>openDelete(b.dataset.d); });
 }
 
 function cpuLabel(t){ return /Unspecified/i.test(t) ? 'unspecified (blank)' : t; }
@@ -295,6 +333,7 @@ function renderControls(){
   $('#maintbanner').style.display = maint ? '' : 'none';
   $('#maintEnter').disabled = maint;
   $('#netSave').disabled = maint;
+  $('#newCpu').disabled = maint;
 
   // limit (the web UI never exceeds the hard safety cap)
   const mo=$('#maxOn'); if(document.activeElement!==mo) mo.value = max;
@@ -371,11 +410,39 @@ $('#wipeConfirm').onclick = async () => {
   const r = await api('wipe-cpu', {name}); toast(r.message, r.ok); await load();
 };
 
+// new CPU: name it, then the backend registers it in PLCSIM and adds it to the workspace
+function openNew(){ $('#newName').value=''; $('#newBg').classList.add('show'); $('#newName').focus(); }
+$('#newCpu').onclick = openNew;
+$('#newCancel').onclick = () => $('#newBg').classList.remove('show');
+$('#newBg').onclick = e => { if(e.target===$('#newBg')) $('#newBg').classList.remove('show'); };
+async function createCpu(){
+  const name = $('#newName').value.trim(); if(!name){ $('#newName').focus(); return; }
+  if(busy) return; busy=true;
+  try{ const r = await api('create-cpu', {name}); toast(r.message||r.error||'ok', r.ok); if(r.ok) $('#newBg').classList.remove('show'); }
+  catch(e){ toast('Error: '+e.message, false); }
+  busy=false; await load();
+}
+$('#newConfirm').onclick = createCpu;
+$('#newName').onkeydown = e => { if(e.key==='Enter') createCpu(); else if(e.key==='Escape') $('#newBg').classList.remove('show'); };
+
+// delete CPU: only while powered off, behind a confirmation
+let delTarget = null;
+function openDelete(name){ delTarget = name; $('#delName').textContent = name; $('#delBg').classList.add('show'); }
+$('#delCancel').onclick = () => $('#delBg').classList.remove('show');
+$('#delBg').onclick = e => { if(e.target===$('#delBg')) $('#delBg').classList.remove('show'); };
+$('#delConfirm').onclick = async () => {
+  const name = delTarget; $('#delBg').classList.remove('show'); if(!name) return;
+  if(busy) return; busy=true;
+  try{ const r = await api('delete-cpu', {name}); toast(r.message||r.error||'ok', r.ok); }
+  catch(e){ toast('Error: '+e.message, false); }
+  busy=false; await load();
+};
+
 $('#safeClear').onclick = async () => { const r=await api('clear-safemode',{}); toast(r.message,r.ok); await load(); };
 
 // maintenance mode: explicitly release PLCSIM so the official control panel / TIA can connect
 $('#maintEnter').onclick = async () => {
-  if(!confirm('Enter maintenance mode?\n\nThis releases PLCSIM so the official control panel / TIA Portal can connect (e.g. to add a new instance). PLC control here is paused until you click Resume.')) return;
+  if(!confirm('Enter maintenance mode?\n\nThis releases PLCSIM so the official control panel / TIA Portal can connect. It powers off the PLCs this tool powered on. PLC control here is paused until you click Resume.')) return;
   const r=await api('maintenance',{enabled:true}); toast(r.message,r.ok); await load();
 };
 $('#maintResume').onclick = async () => { const r=await api('maintenance',{enabled:false}); toast(r.message,r.ok); await load(); };

@@ -5,8 +5,8 @@
 ![PLCSIM Auto-Start web interface](docs/ui.png)
 
 PLCSIM Auto-Start is a small always-on web app that **extends** S7-PLCSIM Advanced — it does **not**
-replace it. You still create and configure your virtual PLCs in the Siemens PLCSIM Advanced GUI as
-usual; PLCSIM Auto-Start reads that workspace and adds what the GUI doesn't give you:
+replace it. It works on the same workspace as the Siemens PLCSIM GUI and adds what the GUI doesn't give
+you:
 
 - 🔄 **Automatic startup** — your PLCs come back up on their own after a server reboot, completely
   unattended. This is the headline feature. See
@@ -32,8 +32,11 @@ Beyond remote control and auto-start:
 - **Power-on limit** — cap how many PLCs can be powered on at once (default **1**, adjustable in the UI).
 - **Per-PLC IP override**, re-applied on every power-on, so a PLC stays reachable on your subnet.
 - **Network mode**: Softbus (zero-config) or TCP/IP mapped to a host adapter.
+- **Create and delete CPUs** — add a new blank CPU to the workspace from the browser, or delete a
+  powered-off one (its saved program is deleted, no backup).
 - **Maintenance mode** — a one-click release of the PLCSIM connection so the official control panel /
-  TIA Portal can connect (e.g. to add a new instance) without stopping the service; one click resumes.
+  TIA Portal can connect, without stopping the service. Entering it powers off the PLCs this tool powered
+  on; one click resumes.
 - **Wipe CPU** — clear an instance's saved program back to a blank/unspecified CPU so you can load a
   project with a *different* CPU from TIA Portal.
 - **Installs as a Windows Service** you Start/Stop from `services.msc` / Task Manager. (Because PLCSIM

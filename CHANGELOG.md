@@ -6,9 +6,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Create and delete CPUs** from the web page. **+ New CPU** registers a blank (unspecified) CPU in
+  PLCSIM and adds it to the workspace's `Instance.JSON`; names that already exist, or that already have
+  saved data in PLCSIM's storage, are refused. **Delete**, for a powered-off CPU, permanently deletes its
+  saved data (no backup), unregisters it from PLCSIM and removes it from the workspace. Both need
+  `storage_layout = default`.
 - **Maintenance mode**: a UI button that releases the PLCSIM connection without stopping the service, so
-  the official PLCSIM Advanced control panel / TIA Portal can connect (e.g. to add a new instance). A
-  banner and a **Resume** button reconnect when you're done.
+  the official PLCSIM Advanced control panel / TIA Portal can connect. Entering it powers off the PLCs this
+  tool powered on. A banner and a **Resume** button reconnect when you're done.
 - **Wipe CPU**: a per-instance button that clears the saved program and hardware config so the instance
   comes back as a blank (unspecified) CPU — for loading a project with a *different* CPU from TIA Portal.
   It powers the instance off, permanently clears its storage (no backup), and unregisters it. The

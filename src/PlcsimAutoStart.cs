@@ -9,6 +9,7 @@
 // Features:
 //   * Web UI listing the PLCs of a PLCSIM workspace (Documents\PLCSIM\<workspace>).
 //   * Power on / Run / Stop / Power off from the browser.
+//   * Create blank CPUs in the workspace and delete powered-off ones.
 //   * Configurable LIMIT of how many instances may be powered on at once (default 1), with a
 //     separate auto-start safety cap (editable in the UI, with a warning) for how many auto-start brings up at boot.
 //   * Per-instance auto-start at boot. Mode "last" restores whatever was running before the
@@ -35,6 +36,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
 using Siemens.Simatic.Simulation.Runtime;
@@ -392,6 +394,148 @@ internal static class BootGuard
     {
         try { File.WriteAllText(StateFile(dir), "attempts=" + n + "\r\n"); }
         catch (Exception ex) { Log.Write("WARN BootGuard.WriteAttempts: " + ex.Message); }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Adds and removes instances in a workspace's Instance.JSON, the file where S7-PLCSIM keeps the
+// workspace's instances. The file is edited as text, so the entries already in it stay exactly as
+// S7-PLCSIM wrote them, and every change is checked by parsing the result before the file is replaced.
+internal static class WorkspaceFile
+{
+    private static string FileOf(string workspace) { return Path.Combine(workspace, "Instance.JSON"); }
+
+    public static void AddInstance(string workspace, string name)
+    {
+        string file = FileOf(workspace);
+        bool bom; string text = Read(file, out bom);
+        string nl = text.Contains("\r\n") ? "\r\n" : "\n";
+        var entries = Parse(text);
+        string version = "20.00.00.00";
+        foreach (var e in entries)
+        {
+            object v;
+            if (e != null && e.TryGetValue("Version", out v) && v is string && ((string)v).Length > 0) { version = (string)v; break; }
+        }
+        int close = text.LastIndexOf(']');
+        if (close < 0) throw new InvalidDataException("Instance.JSON is not a list of instances.");
+        string head = text.Substring(0, close).TrimEnd();
+        string updated = head + (head.EndsWith("[") ? "" : ",") + nl + BlankEntry(name, version, nl) + nl + "]" + text.Substring(close + 1);
+        var check = Parse(updated);
+        if (check.Count != entries.Count + 1 || !check.Any(e => Is(e, name)))
+            throw new InvalidDataException("the updated Instance.JSON did not check out, so it was not written.");
+        Write(file, updated, bom);
+    }
+
+    // Returns false if the workspace has no instance with that name.
+    public static bool RemoveInstance(string workspace, string name)
+    {
+        string file = FileOf(workspace);
+        bool bom; string text = Read(file, out bom);
+        var spans = TopLevelObjects(text);
+        var json = new JavaScriptSerializer();
+        int idx = -1;
+        for (int i = 0; i < spans.Count && idx < 0; i++)
+            if (Is(json.Deserialize<Dictionary<string, object>>(text.Substring(spans[i][0], spans[i][1] - spans[i][0])), name)) idx = i;
+        if (idx < 0) return false;
+
+        string updated;
+        if (spans.Count == 1)
+            updated = text.Substring(0, text.IndexOf('[') + 1) + text.Substring(text.LastIndexOf(']'));
+        else if (idx < spans.Count - 1)   // the entry, its comma and the line break up to the next entry
+            updated = text.Substring(0, spans[idx][0]) + text.Substring(spans[idx + 1][0]);
+        else                              // the comma after the previous entry, and the last entry
+            updated = text.Substring(0, spans[idx - 1][1]) + text.Substring(spans[idx][1]);
+
+        var check = Parse(updated);
+        if (check.Count != spans.Count - 1 || check.Any(e => Is(e, name)))
+            throw new InvalidDataException("the updated Instance.JSON did not check out, so it was not written.");
+        Write(file, updated, bom);
+        return true;
+    }
+
+    // The entry S7-PLCSIM writes for an instance that was never configured.
+    private static string BlankEntry(string name, string version, string nl)
+    {
+        var js = new JavaScriptSerializer();
+        return string.Join(nl, new[] {
+            "  {",
+            "    \"PlcName\": \"Unconfigured PLC\",",
+            "    \"InstanceName\": " + js.Serialize(name) + ",",
+            "    \"InstanceGuid\": \"" + Guid.NewGuid().ToString() + "\",",
+            "    \"PlcType\": 2,",
+            "    \"PlcId\": 1,",
+            "    \"WasPoweredOnWhenSaved\": false,",
+            "    \"IsUsingRuntimeApi\": true,",
+            "    \"IsConfigured\": false,",
+            "    \"TimeScalingValue\": 1.0,",
+            "    \"Version\": " + js.Serialize(version) + ",",
+            "    \"Vplc\": {",
+            "      \"$type\": \"plcsim.Vplc.RunTimeApi.RuntimeApiPlc, plcsim\",",
+            "      \"PlcName\": \"Unconfigured PLC\",",
+            "      \"PlcType\": 0,",
+            "      \"PlcID\": 1,",
+            "      \"IsConfigured\": false,",
+            "      \"CycleTimeoutMode\": 1,",
+            "      \"CycleTimeoutTime\": 150,",
+            "      \"VplcInputOutput\": {",
+            "        \"$type\": \"plcsim.Vplc.RunTimeApi.RunTimeInputOutput, plcsim\"",
+            "      },",
+            "      \"PlcIsInWorkspace\": true",
+            "    },",
+            "    \"LicenseSelection\": {",
+            "      \"SelectedLicense\": 1",
+            "    },",
+            "    \"PlcIsInWorkspace\": true",
+            "  }" });
+    }
+
+    private static bool Is(Dictionary<string, object> e, string name)
+    {
+        return e != null && e.ContainsKey("InstanceName") && string.Equals(Convert.ToString(e["InstanceName"]), name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static List<Dictionary<string, object>> Parse(string text)
+    {
+        var arr = new JavaScriptSerializer().Deserialize<object[]>(text);
+        if (arr == null) throw new InvalidDataException("Instance.JSON is not a list of instances.");
+        return arr.Select(o => o as Dictionary<string, object>).ToList();
+    }
+
+    // [start, end) of each object directly inside the top-level array.
+    private static List<int[]> TopLevelObjects(string t)
+    {
+        var list = new List<int[]>();
+        int depth = 0, start = -1; bool str = false, esc = false;
+        for (int i = 0; i < t.Length; i++)
+        {
+            char c = t[i];
+            if (str) { if (esc) esc = false; else if (c == '\\') esc = true; else if (c == '"') str = false; continue; }
+            if (c == '"') str = true;
+            else if (c == '{' || c == '[') { if (c == '{' && depth == 1) start = i; depth++; }
+            else if (c == '}' || c == ']') { depth--; if (c == '}' && depth == 1 && start >= 0) { list.Add(new[] { start, i + 1 }); start = -1; } }
+        }
+        return list;
+    }
+
+    private static string Read(string file, out bool bom)
+    {
+        byte[] b = File.ReadAllBytes(file);
+        bom = b.Length >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF;
+        int skip = bom ? 3 : 0;
+        return new UTF8Encoding(false).GetString(b, skip, b.Length - skip);
+    }
+
+    // Written next to the original and swapped in, so the file is never left half written.
+    private static void Write(string file, string text, bool bom)
+    {
+        string tmp = file + ".new";
+        try
+        {
+            File.WriteAllText(tmp, text, new UTF8Encoding(bom));
+            File.Replace(tmp, file, null);
+        }
+        finally { try { if (File.Exists(tmp)) File.Delete(tmp); } catch { } }
     }
 }
 
@@ -985,6 +1129,103 @@ internal sealed class PlcManager
         }
     }
 
+    // ----- create / delete CPUs (instances of the current workspace) -----
+    // Names end up as folder names (the instance's storage), so they are kept to plain characters.
+    private static readonly Regex CpuNameRx = new Regex(@"^[A-Za-z0-9_-]{1,64}$");
+    private static readonly HashSet<string> WindowsReservedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" };
+
+    private bool InWorkspace(string name)
+    {
+        return ReadWorkspacePlcs(_cfg.Workspace).Any(d => string.Equals(d.Item1, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Registers a new, blank (unspecified) CPU in PLCSIM and adds it to the current workspace.
+    public ActionResult CreateInstance(string name)
+    {
+        lock (_gate)
+        {
+            if (!RuntimeAvailable()) return ActionResult.Bad("Runtime not available (exit maintenance mode first).");
+            if (_cfg.StorageLayout != "default") return ActionResult.Bad("Creating CPUs needs storage_layout = default.");
+            if (string.IsNullOrEmpty(_cfg.Workspace) || !File.Exists(Path.Combine(_cfg.Workspace, "Instance.JSON")))
+                return ActionResult.Bad("No workspace selected.");
+            name = (name ?? "").Trim();
+            if (name.Length == 0) return ActionResult.Bad("Enter a name for the new CPU.");
+            if (!CpuNameRx.IsMatch(name)) return ActionResult.Bad("Invalid name '" + name + "': use up to 64 letters, digits, '-' or '_'.");
+            if (WindowsReservedNames.Contains(name)) return ActionResult.Bad("'" + name + "' is a name Windows reserves; choose another.");
+            if (InWorkspace(name)) return ActionResult.Bad("There is already a CPU named '" + name + "' in this workspace.");
+            SInstanceInfo info;
+            if (TryFindRegistered(name, out info)) return ActionResult.Bad("There is already a CPU named '" + name + "' in PLCSIM.");
+            // Storage is found by name, so leftover data with this name would come back as this CPU's program.
+            // It may belong to a CPU of another workspace, so it is never cleared here.
+            string storage;
+            try { storage = Path.Combine(SimulationRuntimeManager.DefaultStoragePath, name); }
+            catch (Exception ex) { return ActionResult.Bad("Could not read PLCSIM's storage folder: " + ex.Message); }
+            if (Directory.Exists(storage) && Directory.EnumerateFileSystemEntries(storage).Any())
+                return ActionResult.Bad("There is already saved data for a CPU named '" + name + "' (" + storage + "), maybe from another workspace. Choose another name.");
+
+            IInstance inst;
+            try { inst = GetOrRegister(name); }
+            catch (Exception ex) { Log.Write("CREATE '" + name + "' ERROR: " + ex.Message); return ActionResult.Bad("PLCSIM did not create '" + name + "': " + ex.Message); }
+            try { WorkspaceFile.AddInstance(_cfg.Workspace, name); }
+            catch (Exception ex)
+            {
+                try { inst.UnregisterInstance(); } catch { }
+                Forget(name);
+                Log.Write("CREATE '" + name + "' ERROR writing the workspace: " + ex.Message + " (unregistered again)");
+                return ActionResult.Bad("Could not add '" + name + "' to the workspace: " + ex.Message);
+            }
+            string path = ""; try { path = inst.StoragePath; } catch { }
+            Log.Write("CREATE '" + name + "': registered in PLCSIM (storage " + path + ") and added to workspace '" + Path.GetFileName(_cfg.Workspace) + "'.");
+            return ActionResult.Good("'" + name + "' created as a blank CPU. Power it on and download your project from TIA Portal.");
+        }
+    }
+
+    // Deletes a powered-off CPU: its stored program (no backup), its PLCSIM registration and its
+    // workspace entry.
+    public ActionResult DeleteInstance(string name)
+    {
+        lock (_gate)
+        {
+            if (!RuntimeAvailable()) return ActionResult.Bad("Runtime not available (exit maintenance mode first).");
+            if (_cfg.StorageLayout != "default") return ActionResult.Bad("Deleting CPUs needs storage_layout = default.");
+            if (string.IsNullOrWhiteSpace(name)) return ActionResult.Bad("No instance name.");
+            SInstanceInfo info;
+            bool reg = TryFindRegistered(name, out info);
+            bool inWs = InWorkspace(name);
+            if (!reg && !inWs) return ActionResult.Bad("'" + name + "' is not a known instance.");
+            try
+            {
+                var inst = reg ? Iface(_control, info) : GetOrRegister(name);
+                if (inst.OperatingState != EOperatingState.Off)
+                    return ActionResult.Bad("'" + name + "' is powered on. Power it off first, then delete it.");
+
+                string path = ""; try { path = inst.StoragePath; } catch { }
+                inst.CleanupStoragePath();
+                try { inst.UnregisterInstance(); }
+                catch (Exception ex) { Log.Write("DELETE '" + name + "': WARN unregister failed: " + ex.Message); }
+                Forget(name);
+                if (inWs) WorkspaceFile.RemoveInstance(_cfg.Workspace, name);
+                // Folder that S7-PLCSIM keeps for the instance inside the workspace, if any.
+                string wsInstances = Path.GetFullPath(Path.Combine(_cfg.Workspace, "Instances"));
+                string wsDir = Path.GetFullPath(Path.Combine(wsInstances, name));
+                if (string.Equals(Path.GetDirectoryName(wsDir), wsInstances, StringComparison.OrdinalIgnoreCase) && Directory.Exists(wsDir))
+                    Directory.Delete(wsDir, true);
+
+                var cleared = new List<string>();
+                if (_cfg.DesiredIp.Remove(name)) cleared.Add("saved IP");
+                if (_cfg.LastRunning.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) > 0) cleared.Add("last-running entry");
+                if (string.Equals(_cfg.AutostartInstance, name, StringComparison.OrdinalIgnoreCase)) { _cfg.AutostartInstance = ""; cleared.Add("fixed auto-start instance"); }
+                if (cleared.Count > 0) _cfg.Save();
+
+                Log.Write("DELETE '" + name + "': storage cleared (" + path + "), unregistered from PLCSIM" + (inWs ? ", removed from workspace '" + Path.GetFileName(_cfg.Workspace) + "'" : "") + (cleared.Count > 0 ? "; cleared " + string.Join(", ", cleared.ToArray()) : "") + ".");
+                return ActionResult.Good("'" + name + "' deleted." + (cleared.Count > 0 ? " Also cleared its " + string.Join(", ", cleared.ToArray()) + "." : ""));
+            }
+            catch (Exception ex) { Log.Write("DELETE ERROR '" + name + "': " + ex); return ActionResult.Bad(ex.Message); }
+        }
+    }
+
     public ActionResult Run(string name) { return Op(name, i => i.Run(_cfg.RunTimeout), "RUN"); }
     public ActionResult Stop(string name) { return Op(name, i => i.Stop(_cfg.RunTimeout), "STOP"); }
 
@@ -1140,6 +1381,8 @@ internal sealed class WebServer
             case "stop": WriteResult(ctx, _plc.Stop(Name())); return;
             case "poweroff": WriteResult(ctx, _plc.PowerOff(Name())); return;
             case "wipe-cpu": WriteResult(ctx, _plc.WipeCpu(Name())); return;
+            case "create-cpu": WriteResult(ctx, _plc.CreateInstance(Name())); return;
+            case "delete-cpu": WriteResult(ctx, _plc.DeleteInstance(Name())); return;
             case "select-workspace":
                 {
                     string ws = Name();
