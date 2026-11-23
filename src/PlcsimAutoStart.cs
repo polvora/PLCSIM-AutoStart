@@ -406,10 +406,89 @@ internal sealed class PlcManager
 
     // Maintenance mode: the user explicitly released our connection to PLCSIM so the official
     // control panel / TIA Portal can connect (they can't while we hold the local runtime).
-    // While ON, we touch no API; running PLCs keep running in the runtime service.
+    // While ON, we touch no API.
     public volatile bool Maintenance = false;
 
     public PlcManager(Config cfg) { _cfg = cfg; }
+
+    // ----- PLCSIM API interfaces -----
+    // Every IInstance (CreateInterface / RegisterInstance) has a finalizer that releases the interface
+    // in the Runtime Manager, and when that happens to the interface an instance was powered on with,
+    // the Runtime Manager shuts the instance down: an orderly "Shut down" with no apparent cause,
+    // minutes or hours later, whenever the .NET GC gets to it. So interfaces are created once per
+    // registered instance, reused, never disposed, and kept referenced even after being replaced.
+    // Control (power operations, serialized by _gate) and monitoring (status reads) use separate
+    // interfaces so status stays responsive during a power-on.
+    private sealed class Handle { public int Id; public IInstance Iface; }
+    private readonly object _ifaceLock = new object();
+    private readonly Dictionary<string, Handle> _control = new Dictionary<string, Handle>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Handle> _monitor = new Dictionary<string, Handle>(StringComparer.OrdinalIgnoreCase);
+    private readonly List<IInstance> _retired = new List<IInstance>();   // replaced interfaces, alive on purpose
+    private readonly Dictionary<string, DateTime> _lastRefresh = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+    private static bool TryFindRegistered(string name, out SInstanceInfo info)
+    {
+        foreach (var i in SimulationRuntimeManager.RegisteredInstanceInfo)
+            if (string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase)) { info = i; return true; }
+        info = new SInstanceInfo();
+        return false;
+    }
+
+    // The long-lived interface for a registered instance. A new one is created only if the instance
+    // was registered again (new ID); the previous one is kept alive, not released.
+    private IInstance Iface(Dictionary<string, Handle> cache, SInstanceInfo info)
+    {
+        lock (_ifaceLock)
+        {
+            Handle h;
+            if (cache.TryGetValue(info.Name, out h) && h.Id == info.ID) return h.Iface;
+            var inst = SimulationRuntimeManager.LocalRuntimeManagerInstance.CreateInterface(info.Name);
+            Keep(cache, info.Name, info.ID, inst);
+            Log.Write("  API interface for '" + info.Name + "' (ID " + info.ID + ", " + (cache == _control ? "control" : "monitor") + ") created; kept for the life of the process");
+            return inst;
+        }
+    }
+
+    private void Keep(Dictionary<string, Handle> cache, string name, int id, IInstance inst)
+    {
+        lock (_ifaceLock)
+        {
+            Handle old;
+            if (cache.TryGetValue(name, out old) && !ReferenceEquals(old.Iface, inst)) _retired.Add(old.Iface);
+            cache[name] = new Handle { Id = id, Iface = inst };
+        }
+    }
+
+    // Stops using the interfaces of one instance (name) or of all of them (null), so the next use
+    // creates new ones. Needed when the old ones can no longer be trusted even if the ID comes back
+    // the same: after the instance is unregistered, or after Shutdown(). The old ones stay alive.
+    private void Forget(string name)
+    {
+        lock (_ifaceLock)
+        {
+            foreach (var cache in new[] { _monitor, _control })
+                foreach (var key in cache.Keys.ToList())
+                    if (name == null || string.Equals(key, name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _retired.Add(cache[key].Iface);
+                        cache.Remove(key);
+                    }
+        }
+    }
+
+    // Interfaces that keep failing (e.g. the Runtime Manager restarted and the instance got the same
+    // ID back) are replaced at most once a minute per instance. The old ones stay alive.
+    private void RefreshAfterFailure(string name, Exception ex)
+    {
+        lock (_ifaceLock)
+        {
+            DateTime last;
+            if (_lastRefresh.TryGetValue(name, out last) && (DateTime.UtcNow - last).TotalSeconds < 60) return;
+            _lastRefresh[name] = DateTime.UtcNow;
+            Forget(name);
+            Log.Write("  WARN API interface for '" + name + "' failed (" + ex.Message + "); new ones on next use (" + _retired.Count + " old kept alive)");
+        }
+    }
 
     public bool WaitForRuntime(int seconds)
     {
@@ -435,10 +514,11 @@ internal sealed class PlcManager
         {
             if (Maintenance) return ActionResult.Good("Already in maintenance mode.");
             Maintenance = true;
-            try { SimulationRuntimeManager.Shutdown(); Log.Write("MAINTENANCE ON: released the PLCSIM API connection (Shutdown). The official control panel / TIA Portal can connect now; powered-on PLCs keep running."); }
+            try { SimulationRuntimeManager.Shutdown(); Log.Write("MAINTENANCE ON: released the PLCSIM API connection (Shutdown). The official control panel / TIA Portal can connect now."); }
             catch (Exception ex) { Log.Write("WARN maintenance Shutdown: " + ex.Message); }
+            Forget(null);   // those interfaces belong to the released connection; new ones after Resume
         }
-        return ActionResult.Good("Maintenance mode ON — PLCSIM released. Open the official control panel / TIA now; PLCs that were on keep running. Click Resume when you are done.");
+        return ActionResult.Good("Maintenance mode ON — PLCSIM released. Open the official control panel / TIA now. Click Resume when you are done.");
     }
 
     public ActionResult ExitMaintenance()
@@ -520,22 +600,25 @@ internal sealed class PlcManager
     {
         var d = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         if (!RuntimeAvailable()) return d;
-        var mgr = SimulationRuntimeManager.LocalRuntimeManagerInstance;
         foreach (var info in SimulationRuntimeManager.RegisteredInstanceInfo)
         {
             string state = "InvalidOperatingState", ip = "", cpu = "";
             try
             {
-                var inst = mgr.CreateInterface(info.Name);
-                state = inst.OperatingState.ToString();
-                try { cpu = inst.CPUType.ToString(); } catch { }
-                if (inst.OperatingState != EOperatingState.Off)
+                var inst = Iface(_monitor, info);
+                lock (inst)   // one monitoring interface shared by concurrent status requests
                 {
-                    try { var ips = inst.ControllerIP; if (ips != null) ip = string.Join(", ", ips.Where(x => !string.IsNullOrEmpty(x) && x != "0.0.0.0")); }
-                    catch { }
+                    var s = inst.OperatingState;
+                    state = s.ToString();
+                    try { cpu = inst.CPUType.ToString(); } catch { }
+                    if (s != EOperatingState.Off)
+                    {
+                        try { var ips = inst.ControllerIP; if (ips != null) ip = string.Join(", ", ips.Where(x => !string.IsNullOrEmpty(x) && x != "0.0.0.0")); }
+                        catch { }
+                    }
                 }
             }
-            catch { }
+            catch (Exception ex) { RefreshAfterFailure(info.Name, ex); }
             d[info.Name] = new[] { state, ip, cpu };
         }
         return d;
@@ -621,26 +704,31 @@ internal sealed class PlcManager
     }
 
     // ----- power control (all serialized through _gate) -----
+    // Control interface of the instance, registering it first if needed (kept for the life of the process).
     private IInstance GetOrRegister(string name)
     {
-        var mgr = SimulationRuntimeManager.LocalRuntimeManagerInstance;
-        foreach (var info in SimulationRuntimeManager.RegisteredInstanceInfo)
-            if (string.Equals(info.Name, name, StringComparison.OrdinalIgnoreCase))
-                return mgr.CreateInterface(name);
+        SInstanceInfo info;
+        if (TryFindRegistered(name, out info)) return Iface(_control, info);
 
         // Not registered -> register so the program loads from persistent storage.
+        IInstance inst;
         if (_cfg.StorageLayout == "default")
-            return SimulationRuntimeManager.RegisterInstance(name);
-
-        string storage = _cfg.StorageLayout == "workspace_instances"
-            ? Path.Combine(_cfg.Workspace, "Instances", name)
-            : _cfg.Workspace;
-        try { Log.Write("  RegisterCustomInstance('" + name + "', '" + storage + "')"); return SimulationRuntimeManager.RegisterCustomInstance(name, storage); }
-        catch (Exception ex)
+            inst = SimulationRuntimeManager.RegisterInstance(name);
+        else
         {
-            Log.Write("  WARN RegisterCustomInstance failed (" + ex.Message + "); falling back to RegisterInstance.");
-            return SimulationRuntimeManager.RegisterInstance(name);
+            string storage = _cfg.StorageLayout == "workspace_instances"
+                ? Path.Combine(_cfg.Workspace, "Instances", name)
+                : _cfg.Workspace;
+            try { Log.Write("  RegisterCustomInstance('" + name + "', '" + storage + "')"); inst = SimulationRuntimeManager.RegisterCustomInstance(name, storage); }
+            catch (Exception ex)
+            {
+                Log.Write("  WARN RegisterCustomInstance failed (" + ex.Message + "); falling back to RegisterInstance.");
+                inst = SimulationRuntimeManager.RegisterInstance(name);
+            }
         }
+        Keep(_control, name, inst.ID, inst);
+        Log.Write("  registered '" + name + "' (ID " + inst.ID + "); its interface is kept for the life of the process");
+        return inst;
     }
 
     // Names of currently powered-on instances (state != Off). Basis of the limiter.
@@ -648,11 +736,14 @@ internal sealed class PlcManager
     {
         var list = new List<string>();
         if (!RuntimeAvailable()) return list;
-        var mgr = SimulationRuntimeManager.LocalRuntimeManagerInstance;
         foreach (var info in SimulationRuntimeManager.RegisteredInstanceInfo)
         {
-            try { if (mgr.CreateInterface(info.Name).OperatingState != EOperatingState.Off) list.Add(info.Name); }
-            catch { }
+            try
+            {
+                var inst = Iface(_monitor, info);
+                lock (inst) { if (inst.OperatingState != EOperatingState.Off) list.Add(info.Name); }
+            }
+            catch (Exception ex) { RefreshAfterFailure(info.Name, ex); }
         }
         return list;
     }
@@ -826,10 +917,9 @@ internal sealed class PlcManager
             if (!RuntimeAvailable()) return ActionResult.Bad("Runtime manager not available.");
             try
             {
-                var mgr = SimulationRuntimeManager.LocalRuntimeManagerInstance;
-                bool reg = SimulationRuntimeManager.RegisteredInstanceInfo.Any(i => string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase));
-                if (!reg) return ActionResult.Bad("'" + name + "' is not powered on. Power it on first to set its IP.");
-                var inst = mgr.CreateInterface(name);
+                SInstanceInfo info;
+                if (!TryFindRegistered(name, out info)) return ActionResult.Bad("'" + name + "' is not powered on. Power it on first to set its IP.");
+                var inst = Iface(_control, info);
                 if (inst.OperatingState == EOperatingState.Off)
                     return ActionResult.Bad("'" + name + "' is powered off. Power it on first to set its IP.");
                 inst.SetIPSuite(0, new SIPSuite4(ip, mask, gw), false);
@@ -856,12 +946,12 @@ internal sealed class PlcManager
             if (string.IsNullOrWhiteSpace(name)) return ActionResult.Bad("No instance name.");
             try
             {
-                var mgr = SimulationRuntimeManager.LocalRuntimeManagerInstance;
-                bool reg = SimulationRuntimeManager.RegisteredInstanceInfo.Any(i => string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase));
+                SInstanceInfo info;
+                bool reg = TryFindRegistered(name, out info);
                 // Only wipe a KNOWN instance (registered now, or defined in the workspace). Never create one.
                 bool known = reg || ReadWorkspacePlcs(_cfg.Workspace).Any(d => string.Equals(d.Item1, name, StringComparison.OrdinalIgnoreCase));
                 if (!known) return ActionResult.Bad("'" + name + "' is not a known instance.");
-                var inst = reg ? mgr.CreateInterface(name) : GetOrRegister(name);
+                var inst = reg ? Iface(_control, info) : GetOrRegister(name);
 
                 string oldCpu = ""; try { oldCpu = inst.CPUType.ToString(); } catch { }
 
@@ -881,6 +971,7 @@ internal sealed class PlcManager
                 // Remove it from the runtime for a clean slate; it re-registers blank on the next power-on.
                 try { inst.UnregisterInstance(); Log.Write("Wipe '" + name + "': unregistered from the runtime."); }
                 catch (Exception ex) { Log.Write("Wipe '" + name + "': WARN unregister failed: " + ex.Message); }
+                Forget(name);   // it may come back with the same ID; don't reuse interfaces of the old registration
 
                 // Forget the saved IP + last-running entry so nothing restores the old program.
                 _cfg.DesiredIp.Remove(name);
@@ -911,10 +1002,9 @@ internal sealed class PlcManager
             if (!RuntimeAvailable()) return ActionResult.Bad("Runtime manager not available.");
             try
             {
-                var mgr = SimulationRuntimeManager.LocalRuntimeManagerInstance;
-                bool exists = SimulationRuntimeManager.RegisteredInstanceInfo.Any(i => string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase));
-                if (!exists) return ActionResult.Bad("'" + name + "' is not registered (power it on first).");
-                var inst = mgr.CreateInterface(name);
+                SInstanceInfo info;
+                if (!TryFindRegistered(name, out info)) return ActionResult.Bad("'" + name + "' is not registered (power it on first).");
+                var inst = Iface(_control, info);
                 Log.Write(label + " '" + name + "' (state " + inst.OperatingState + ")");
                 act(inst);
                 return ActionResult.Good("'" + name + "' -> " + inst.OperatingState);

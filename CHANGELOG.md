@@ -7,12 +7,22 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - **Maintenance mode**: a UI button that releases the PLCSIM connection without stopping the service, so
-  the official PLCSIM Advanced control panel / TIA Portal can connect (e.g. to add a new instance). PLCs
-  that are powered on keep running; a banner and a **Resume** button reconnect when you're done.
+  the official PLCSIM Advanced control panel / TIA Portal can connect (e.g. to add a new instance). A
+  banner and a **Resume** button reconnect when you're done.
 - **Wipe CPU**: a per-instance button that clears the saved program and hardware config so the instance
   comes back as a blank (unspecified) CPU — for loading a project with a *different* CPU from TIA Portal.
   It powers the instance off, permanently clears its storage (no backup), and unregisters it. The
   instance's CPU type is now shown in the list.
+
+### Fixed
+- **PLCs shutting down by themselves at random.** The symptom was an orderly "Shut down" (RUN to OFF) in
+  the diagnostic buffer and an exit code 0, minutes or hours after power-on, typically while the web UI
+  was open. The cause: the app created a new PLCSIM API interface (`CreateInterface` / `RegisterInstance`)
+  on every status request and every operation, and never kept or released it. Each of those objects has
+  a finalizer. When the .NET GC finalized the interface an instance had been powered on with, the Runtime
+  Manager shut that instance down; frequent status polling made the GC run sooner. Interfaces are now
+  created once per registered instance (one for control, one for monitoring), reused, and kept alive for
+  the life of the process.
 
 ## [1.0.0] - 2026-06-03
 

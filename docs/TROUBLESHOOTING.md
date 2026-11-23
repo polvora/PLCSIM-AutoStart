@@ -48,8 +48,8 @@ is overloaded, lower the **auto-start cap** (`hard_max_powered_on`), then click 
 
 ## Official control panel / TIA says "no connection to PLCSIM Advanced"
 The service holds a live connection to the PLCSIM runtime, and the official tools can't connect at the
-same time. Don't stop the service — click **Enter maintenance mode** in the UI. It releases PLCSIM (PLCs
-that are powered on keep running) so the control panel / TIA can connect, e.g. to **add a new instance**.
+same time. Don't stop the service — click **Enter maintenance mode** in the UI. It releases PLCSIM so the
+control panel / TIA can connect, e.g. to **add a new instance**.
 Click **Resume** when you're done to reconnect.
 
 ## Load a project with a different CPU (TIA rejects it)
@@ -67,10 +67,19 @@ The PLC must be **powered on** first, then use the **IP…** button. The IP is r
 power-on. If the TIA program defines its own IP, that applies too.
 
 ## An instance powers off by itself after a while
-This tool never powers an instance off on its own (only your explicit **Power off** does — and it's
-logged). A simulation that powers off after some minutes is **PLCSIM Advanced** itself, typically the
-**trial / unlicensed** time limit. Check your S7-PLCSIM Advanced license (Automation License Manager);
-a valid license removes the limit.
+The symptom is an orderly "Shut down" (RUN to OFF) in the diagnostic buffer, an instance process exit
+code of 0, and no **POWEROFF** line in `autostart.log`.
+
+- **Version 1.0.0 caused this.** The PLCSIM Runtime Manager shuts an instance down when the API client
+  that powered it on releases that interface. 1.0.0 created a new interface on every status request
+  and never kept it, so whenever the .NET garbage collector finalized the one used for power-on, the
+  Runtime Manager powered the PLC off. That could happen minutes or hours later, and sooner while the
+  web UI was open. Newer versions keep one interface per instance for the life of the process.
+- **This is still expected when the app stops.** Stopping or restarting the `PLCSIM AutoStart` service,
+  or killing `PlcsimAutoStart.exe`, powers off the PLCs it started. Auto-start powers them on again when
+  the app comes back.
+- **A different case:** RUN to STOP followed by the instance restarting by itself within seconds. Check
+  whether TIA Portal was downloading to that PLC at that moment.
 
 ## Network mode looks like Softbus / "didn't persist"
 Your setting in `appconfig.txt` **does** persist across reboots. Two things to know:

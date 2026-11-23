@@ -33,8 +33,7 @@ Beyond remote control and auto-start:
 - **Per-PLC IP override**, re-applied on every power-on, so a PLC stays reachable on your subnet.
 - **Network mode**: Softbus (zero-config) or TCP/IP mapped to a host adapter.
 - **Maintenance mode** — a one-click release of the PLCSIM connection so the official control panel /
-  TIA Portal can connect (e.g. to add a new instance) without stopping the service. Powered-on PLCs keep
-  running; one click resumes.
+  TIA Portal can connect (e.g. to add a new instance) without stopping the service; one click resumes.
 - **Wipe CPU** — clear an instance's saved program back to a blank/unspecified CPU so you can load a
   project with a *different* CPU from TIA Portal.
 - **Installs as a Windows Service** you Start/Stop from `services.msc` / Task Manager. (Because PLCSIM

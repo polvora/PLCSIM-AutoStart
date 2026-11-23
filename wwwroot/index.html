@@ -83,7 +83,7 @@
     <div class="row sp">
       <div>
         <div style="font-weight:700;color:#6db1ff;font-size:15px">🔧 Maintenance mode — PLCSIM released</div>
-        <div class="note" style="color:#cfe3ff;margin-top:6px">The official PLCSIM Advanced control panel / TIA Portal can connect now. PLCs that were powered on keep running. PLC control here is paused — click <b>Resume</b> when you are done.</div>
+        <div class="note" style="color:#cfe3ff;margin-top:6px">The official PLCSIM Advanced control panel / TIA Portal can connect now. PLC control here is paused — click <b>Resume</b> when you are done.</div>
       </div>
       <button class="primary" id="maintResume">Resume</button>
     </div>
@@ -155,7 +155,7 @@
 
   <div class="card">
     <h2>Maintenance</h2>
-    <div class="note">This service keeps a live connection to PLCSIM, so the <b>official control panel / TIA Portal can't connect</b> while it runs (the panel shows "no connection to PLCSIM Advanced"). To open them — e.g. to <b>add a new instance</b> — enter maintenance mode: it releases PLCSIM <b>without stopping this service</b>. PLCs that are powered on keep running.</div>
+    <div class="note">This service keeps a live connection to PLCSIM, so the <b>official control panel / TIA Portal can't connect</b> while it runs (the panel shows "no connection to PLCSIM Advanced"). To open them — e.g. to <b>add a new instance</b> — enter maintenance mode: it releases PLCSIM <b>without stopping this service</b>.</div>
     <div class="row" style="margin-top:12px">
       <button id="maintEnter">🔧 Enter maintenance mode (to open the official GUI)</button>
     </div>
@@ -375,7 +375,7 @@ $('#safeClear').onclick = async () => { const r=await api('clear-safemode',{}); 
 
 // maintenance mode: explicitly release PLCSIM so the official control panel / TIA can connect
 $('#maintEnter').onclick = async () => {
-  if(!confirm('Enter maintenance mode?\n\nThis releases PLCSIM so the official control panel / TIA Portal can connect (e.g. to add a new instance). PLCs that are powered on keep running, but PLC control here is paused until you click Resume.')) return;
+  if(!confirm('Enter maintenance mode?\n\nThis releases PLCSIM so the official control panel / TIA Portal can connect (e.g. to add a new instance). PLC control here is paused until you click Resume.')) return;
   const r=await api('maintenance',{enabled:true}); toast(r.message,r.ok); await load();
 };
 $('#maintResume').onclick = async () => { const r=await api('maintenance',{enabled:false}); toast(r.message,r.ok); await load(); };
